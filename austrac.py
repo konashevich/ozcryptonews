@@ -7,350 +7,209 @@ from datetime import datetime, timezone, timedelta
 
 # --- Configuration ---
 RSS_URL = "https://www.austrac.gov.au/media-release/rss.xml"
-KEYWORDS_CSV = "web3keywords.txt" # Input file with keywords (one per line)
-ARTICLES_CSV = "articles.csv"     # Output file for matched articles
-SOURCE_NAME = "austrac.gov.au"    # Identifier for this source
-CSV_HEADERS = ['date', 'source', 'url', 'title', 'done'] # Output CSV columns
-REQUEST_TIMEOUT = 30 # Seconds to wait for the RSS feed request
+KEYWORDS_TXT = "web3keywords.txt" # Changed from CSV to TXT for keywords
+ARTICLES_CSV = "articles.csv"
+SOURCE_NAME = "austrac.gov.au"
+CSV_HEADERS = ['date', 'source', 'url', 'title', 'done']
+REQUEST_TIMEOUT = 30
 
 # --- Functions ---
 
 def load_keywords(filename):
-    """
-    Loads keywords from the specified file.
-
-    If the file ends with .txt, assumes one keyword/phrase per line.
-    Otherwise, falls back to CSV file loading.
-
-    Args:
-        filename (str): The path to the keywords file.
-
-    Returns:
-        set: A set of unique keywords in lowercase.
-    """
+    """Loads keywords from the specified TXT file (one keyword/phrase per line)."""
     keywords = set()
-    try:
-        if filename.lower().endswith('.txt'):
-            with open(filename, mode='r', encoding='utf-8') as infile:
-                for line in infile:
-                    keyword = line.strip()
-                    if keyword:
-                        keywords.add(keyword.lower())
-            print(f"Loaded {len(keywords)} keywords/phrases from {filename}")
-        else:
-            # Fallback to CSV logic (for backwards compatibility)
-            with open(filename, mode='r', encoding='utf-8-sig', newline='') as infile:
-                reader = csv.DictReader(infile)
-                if 'Keyword' not in reader.fieldnames or 'Variants' not in reader.fieldnames:
-                    print(f"Error: Missing 'Keyword' or 'Variants' columns in {filename}.")
-                    return set()
-                for row_number, row in enumerate(reader, start=2):
-                    main_keyword = row.get('Keyword', '').strip().lower()
-                    if main_keyword:
-                        keywords.add(main_keyword)
-                    variants_str = row.get('Variants', '').strip()
-                    if variants_str:
-                        variants = [v.strip().lower() for v in variants_str.split(',') if v.strip()]
-                        keywords.update(variants)
-            print(f"Loaded {len(keywords)} keywords/variants from {filename}")
+    if not os.path.exists(filename):
+        print(f"Warning: Keywords file '{filename}' not found. No keyword filtering will be applied.")
         return keywords
+    try:
+        with open(filename, mode='r', encoding='utf-8-sig') as infile: # utf-8-sig for potential BOM
+            for line in infile:
+                keyword = line.strip().lower()
+                if keyword: # Ensure keyword is not empty
+                    keywords.add(keyword)
+        print(f"Loaded {len(keywords)} unique keywords/phrases from {filename}.")
     except FileNotFoundError:
-        print(f"Error: Keywords file '{filename}' not found. Please create it or check the path.")
-        return set()
+         print(f"Error: Keywords file '{filename}' not found.") # Should be caught by os.path.exists
     except Exception as e:
-        print(f"Error reading keywords file '{filename}': {e}")
-        return set()
+        print(f"Error loading keywords from {filename}: {e}")
+    return keywords
 
 def load_existing_urls(filename, source_filter):
-    """
-    Loads existing article URLs for a specific source from the articles CSV file.
-    Creates the file with headers if it doesn't exist.
-
-    Args:
-        filename (str): The path to the articles CSV file.
-        source_filter (str): The source name to filter by (e.g., 'austrac.gov.au').
-
-    Returns:
-        set: A set of existing URLs for the specified source.
-    """
+    """Loads existing article URLs for a specific source from the articles CSV file."""
     existing_urls = set()
-    file_exists = os.path.exists(filename)
-
-    # Create the file with headers if it doesn't exist
-    if not file_exists:
+    if not os.path.exists(filename) or os.path.getsize(filename) == 0:
         try:
-            with open(filename, mode='w', newline='', encoding='utf-8') as outfile:
+            with open(filename, mode='w', newline='', encoding='utf-8') as outfile: # Create if not exists
                 writer = csv.writer(outfile)
                 writer.writerow(CSV_HEADERS)
-            print(f"Created articles file '{filename}' with headers.")
-            return existing_urls # Return empty set as the file was just created
+            print(f"Created or initialized articles file '{filename}' with headers.")
         except IOError as e:
-            print(f"Error: Could not create articles file '{filename}': {e}")
-            return existing_urls # Return empty set on creation error
+            print(f"Error: Could not create/initialize articles file '{filename}': {e}")
+        return existing_urls
 
-    # Read existing URLs if the file exists
     try:
         with open(filename, mode='r', newline='', encoding='utf-8') as infile:
             reader = csv.DictReader(infile)
-            # Verify required columns are present in the existing file
             if not all(header in reader.fieldnames for header in ['url', 'source']):
-                 print(f"Warning: Existing file '{filename}' is missing 'url' or 'source' column headers. Cannot reliably check for duplicates for source '{source_filter}'.")
-                 # Continue cautiously, might add duplicates if headers are wrong
+                 print(f"Warning: Existing file '{filename}' is missing 'url' or 'source' column headers.")
             else:
                 for row in reader:
-                    # Check if the row has the 'source' key and its value matches the filter
-                    # Also check if the 'url' key exists and is not empty
                     if row.get('source') == source_filter and row.get('url'):
                         existing_urls.add(row['url'].strip())
-
-    except FileNotFoundError:
-         # This case is handled by the os.path.exists check, but good practice to include
-         print(f"Info: Articles file '{filename}' not found, will be created.")
-         pass
     except Exception as e:
         print(f"Error reading existing articles from '{filename}': {e}")
-        # Decide how to proceed: stop, or continue with potentially incomplete duplicate checking.
-        # Let's continue but warn the user.
-        print(f"Warning: Proceeding without complete duplicate checking for '{source_filter}' due to read error.")
+        print(f"Warning: Proceeding with potentially incomplete duplicate checking for '{source_filter}'.")
 
     print(f"Found {len(existing_urls)} existing URLs for source '{source_filter}' in {filename}")
     return existing_urls
 
 def fetch_and_parse_feed(url, timeout):
-    """
-    Fetches and parses the RSS feed from the given URL.
-
-    Args:
-        url (str): The URL of the RSS feed.
-        timeout (int): Request timeout in seconds.
-
-    Returns:
-        feedparser.FeedParserDict: The parsed feed object, or None if fetching/parsing fails.
-    """
+    """Fetches and parses the RSS feed."""
     print(f"Fetching RSS feed from: {url}")
-    headers = {'User-Agent': 'Python RSS Collector Script (https://github.com/; contact your-email@example.com)'} # Be polite
+    headers = {'User-Agent': 'Python RSS Collector Script/1.0'}
     try:
         response = requests.get(url, timeout=timeout, headers=headers)
-        response.raise_for_status() # Raise an HTTPError for bad status codes (4xx or 5xx)
-
-        # Decode explicitly using UTF-8, fallback to requests' detection if needed
-        try:
-            content = response.content.decode('utf-8')
-        except UnicodeDecodeError:
-            print("Warning: Could not decode feed as UTF-8, using requests' detected encoding.")
-            content = response.text # Use requests' decoded text
-
+        response.raise_for_status()
+        content = response.content # Use content for feedparser
         feed = feedparser.parse(content)
-
-        # Check for bozo flag which indicates potential parsing issues
         if feed.bozo:
             print(f"Warning: Feed may be ill-formed. Parser issue: {feed.bozo_exception}")
         if not feed.entries:
-             print("Warning: Feed parsed successfully, but no entries were found.")
+             print("Warning: Feed parsed, but no entries found.")
         else:
              print(f"Successfully parsed feed. Found {len(feed.entries)} entries.")
         return feed
-
     except requests.exceptions.Timeout:
-        print(f"Error: Request timed out after {timeout} seconds while fetching feed: {url}")
-        return None
+        print(f"Error: Request timed out fetching feed: {url}")
     except requests.exceptions.RequestException as e:
         print(f"Error: Failed to fetch RSS feed: {e}")
-        return None
     except Exception as e:
-        # Catch other potential errors during parsing
-        print(f"Error: An unexpected error occurred during feed fetching or parsing: {e}")
-        return None
+        print(f"Error: Unexpected error during feed fetching/parsing: {e}")
+    return None
 
 def check_match(entry, keywords):
-    """
-    Checks if an RSS feed entry's title or summary/description contains any of the keywords.
-    Performs case-insensitive substring matching.
-
-    Args:
-        entry (feedparser.FeedParserDict): A single entry from the parsed feed.
-        keywords (set): A set of lowercase keywords to search for.
-
-    Returns:
-        bool: True if a match is found, False otherwise.
-    """
-    # Get title, default to empty string if missing
+    """Checks if an entry's title or summary contains keywords (case-insensitive substring)."""
     title = entry.get('title', '').lower()
-
-    # Get summary, fall back to description if summary is missing, default to empty string
     summary = entry.get('summary', entry.get('description', '')).lower()
-
-    # Combine title and summary for searching
     content_to_check = title + " " + summary
-
-    # Check if any keyword exists as a substring in the combined content
     for keyword in keywords:
         if keyword in content_to_check:
-            # print(f"Debug: Match found! Keyword '{keyword}' in entry: {entry.get('title', 'No Title')}") # Uncomment for debugging matches
-            return True # Found a match, no need to check further keywords for this entry
-    return False # No keywords matched this entry
+            return True
+    return False
 
-def format_date_iso(parsed_date_tuple):
+def format_date_to_iso_utc(parsed_date_tuple):
     """
-    Converts feedparser's time tuple (assumed UTC/GMT) to an ISO 8601 UTC string.
-
-    Args:
-        parsed_date_tuple (time.struct_time): The time tuple from feedparser (e.g., entry.published_parsed).
-
-    Returns:
-        str: The date and time in ISO 8601 format (YYYY-MM-DDTHH:MM:SS+00:00),
-             or None if the input tuple is invalid.
+    Converts feedparser's time tuple to an ISO 8601 UTC string: YYYY-MM-DDTHH:MM:SS+00:00.
+    Feedparser's published_parsed is assumed to be in UTC if no timezone info is present.
     """
     if not parsed_date_tuple:
         return None
     try:
-        # Convert time tuple to seconds since epoch (assuming it's UTC/GMT)
-        epoch_seconds = time.mktime(parsed_date_tuple)
-        # Create a naive datetime object from the epoch seconds in UTC
-        dt_naive_utc = datetime.fromtimestamp(epoch_seconds, tz=timezone.utc)
-
-        # Format as ISO 8601 string with UTC offset (+00:00)
-        # timespec='seconds' ensures HH:MM:SS format
-        iso_string = dt_naive_utc.isoformat(timespec='seconds')
-
-        # Ensure the format includes the '+00:00' for UTC explicitly if needed
-        # dt_naive_utc.isoformat() sometimes omits it if microseconds are zero.
-        # Let's ensure it's always there for consistency.
-        if not iso_string.endswith('+00:00'):
-             # This might happen if the time tuple conversion somehow lost tz info,
-             # but fromtimestamp with tz=timezone.utc should handle it.
-             # As a fallback, manually ensure UTC representation:
-             dt_aware_utc = datetime.fromtimestamp(epoch_seconds).replace(tzinfo=timezone.utc)
-             iso_string = dt_aware_utc.isoformat(timespec='seconds')
-
-
-        return iso_string
-    except (TypeError, ValueError, OverflowError) as e:
-        # Catch potential errors during time conversion
-        print(f"Warning: Could not convert date tuple {parsed_date_tuple} to ISO format: {e}")
+        # Create a datetime object from the time tuple.
+        # time.mktime assumes local time, so we need to be careful.
+        # A better way is to use datetime directly if the tuple represents UTC.
+        # feedparser.struct_time is a time.struct_time object.
+        # Index 0-5 are year, month, day, hour, minute, second.
+        dt_obj = datetime(
+            parsed_date_tuple[0], parsed_date_tuple[1], parsed_date_tuple[2],
+            parsed_date_tuple[3], parsed_date_tuple[4], parsed_date_tuple[5]
+        )
+        # Assume the parsed time from feedparser is UTC, make it timezone-aware.
+        dt_utc = dt_obj.replace(tzinfo=timezone.utc)
+        return dt_utc.strftime('%Y-%m-%dT%H:%M:%S+00:00')
+    except (TypeError, ValueError, IndexError) as e:
+        print(f"Warning: Could not convert date tuple {parsed_date_tuple} to ISO UTC format: {e}")
         return None
 
 
 def main():
-    """Main function to orchestrate the feed fetching, filtering, and saving."""
-    print("--- Starting AUSTRAC RSS Collector ---")
-
-    # 1. Load Keywords
-    keywords = load_keywords(KEYWORDS_CSV)
+    print("--- Starting AUSTRAC RSS Collector (Date Format UTC) ---")
+    keywords = load_keywords(KEYWORDS_TXT)
     if not keywords:
-        print("Error: No keywords loaded. Please check 'web3keywords.csv'. Exiting.")
-        return # Exit if keywords couldn't be loaded
+        print("No keywords loaded. Exiting.")
+        return
 
-    # 2. Load Existing URLs for this specific source
     existing_urls = load_existing_urls(ARTICLES_CSV, SOURCE_NAME)
-
-    # 3. Fetch and Parse RSS Feed
     feed = fetch_and_parse_feed(RSS_URL, REQUEST_TIMEOUT)
     if not feed:
-        print("Error: Failed to fetch or parse the RSS feed. Exiting.")
-        return # Exit if feed fetching failed
+        print("Failed to fetch/parse RSS feed. Exiting.")
+        return
 
-    # 4. Process Feed Entries
     new_articles = []
     processed_count = 0
-    matched_count = 0
-    skipped_duplicate_count = 0
-    skipped_error_count = 0
+    MIN_YEAR = 2025
 
     print("Processing feed entries...")
-    MIN_YEAR = 2025
     for entry in feed.entries:
         processed_count += 1
-
-        # --- Basic Validation ---
         url = entry.get('link', '').strip()
         title = entry.get('title', 'No Title Available').strip()
-        # Use 'published_parsed' as it's a structured time tuple
-        published_parsed = entry.get('published_parsed')
+        published_parsed_tuple = entry.get('published_parsed')
 
-        if not url:
-            print(f"Warning: Skipping entry #{processed_count} due to missing URL. Title: '{title}'")
-            skipped_error_count += 1
+        if not url or not published_parsed_tuple:
+            print(f"Warning: Skipping entry #{processed_count} due to missing URL or date. URL: '{url}', Title: '{title}'")
             continue
-        if not published_parsed:
-             print(f"Warning: Skipping entry #{processed_count} due to missing publication date. URL: <{url}>")
-             skipped_error_count += 1
-             continue
-
-        # --- Check for Duplicates (based on URL for this source) ---
         if url in existing_urls:
-            # print(f"Debug: Skipping already existing article: {url}") # Uncomment for verbose logging
-            skipped_duplicate_count += 1
-            continue # Skip this entry, it's already in the CSV for this source
+            continue
 
-        # --- Check for Keyword Match ---
+        # Convert feedparser's time tuple to datetime object to check year
+        try:
+            entry_dt = datetime(
+                published_parsed_tuple[0], published_parsed_tuple[1], published_parsed_tuple[2],
+                tzinfo=timezone.utc # Assume UTC for year check
+            )
+            if entry_dt.year < MIN_YEAR:
+                # print(f"Debug: Skipping article from {entry_dt.year}: {title}")
+                continue
+        except Exception as e:
+            print(f"Warning: Could not parse date for year check for '{title}': {e}")
+            continue
+
+
         if check_match(entry, keywords):
-            matched_count += 1
-
-            # --- Format Date ---
-            iso_date_str = format_date_iso(published_parsed)
-            if not iso_date_str:
+            iso_date_utc_str = format_date_to_iso_utc(published_parsed_tuple)
+            if not iso_date_utc_str:
                  print(f"Warning: Skipping matched article due to date formatting error. URL: <{url}>")
-                 skipped_error_count += 1
-                 continue # Skip if date couldn't be formatted
+                 continue
 
+            # For sorting, convert the ISO string back to a datetime object (aware)
+            # This ensures sorting works correctly with full timestamps.
             try:
-                sort_dt = datetime.fromtimestamp(time.mktime(published_parsed), tz=timezone.utc)
-            except Exception:
-                sort_dt = datetime.now(timezone.utc)
+                sort_dt_utc = datetime.fromisoformat(iso_date_utc_str)
+            except ValueError:
+                print(f"Warning: Could not parse ISO date '{iso_date_utc_str}' for sorting. Skipping article '{title}'.")
+                continue
 
-            # Enforce articles from 2025 onward
-            if sort_dt.year < MIN_YEAR:
-                continue  # Skip articles before 2025
 
-            # --- Prepare Data for CSV ---
-            # Store the original datetime object for sorting purposes
             article_data = {
-                'date': iso_date_str,
+                'date': iso_date_utc_str, # YYYY-MM-DDTHH:MM:SS+00:00
                 'source': SOURCE_NAME,
                 'url': url,
                 'title': title,
                 'done': '',
-                '_sort_date': sort_dt # Temporary key for sorting
+                '_sort_date_obj': sort_dt_utc # Use datetime object for sorting
             }
             new_articles.append(article_data)
-            # print(f"Found new matching article: '{title}' ({iso_date_str})") # Debugging log
 
-    print(f"Finished processing {processed_count} entries.")
-    print(f" - Skipped {skipped_duplicate_count} entries already present in '{ARTICLES_CSV}' for source '{SOURCE_NAME}'.")
-    print(f" - Skipped {skipped_error_count} entries due to missing data or errors.")
-    print(f" - Found {len(new_articles)} new articles matching keywords.")
+    print(f"Finished processing {processed_count} entries. Found {len(new_articles)} new matching articles.")
 
-    # 5. Sort and Append New Articles to CSV
     if new_articles:
-        # Sort the newly found articles chronologically (oldest first) based on publication date
-        new_articles.sort(key=lambda x: x['_sort_date'])
+        new_articles.sort(key=lambda x: x['_sort_date_obj']) # Sort by datetime object
         print(f"Appending {len(new_articles)} new articles to '{ARTICLES_CSV}'...")
-
         try:
-            # Open in append mode ('a')
             with open(ARTICLES_CSV, mode='a', newline='', encoding='utf-8') as outfile:
-                # Use DictWriter, ensuring fieldnames match the desired order
                 writer = csv.DictWriter(outfile, fieldnames=CSV_HEADERS, extrasaction='ignore')
-                # The header is only written when the file is first created by load_existing_urls
-                # No need to write header in append mode
-
+                # Header is written by load_existing_urls if file is new/empty
                 for article in new_articles:
-                    # The '_sort_date' key was temporary; DictWriter with extrasaction='ignore'
-                    # will automatically skip it if it's not in fieldnames.
-                    # Alternatively, explicitly remove it: del article['_sort_date']
-                    writer.writerow(article)
-
+                    writer.writerow({k: article[k] for k in CSV_HEADERS}) # Write only specified headers
             print(f"Successfully appended {len(new_articles)} new articles.")
         except IOError as e:
             print(f"Error: Could not write new articles to '{ARTICLES_CSV}': {e}")
         except Exception as e:
-            print(f"Error: An unexpected error occurred while writing to CSV: {e}")
+            print(f"Error: Unexpected error while writing to CSV: {e}")
     else:
         print("No new matching articles to add.")
+    print("--- AUSTRAC RSS Collector Finished ---")
 
-    print("--- Script finished ---")
-
-# --- Run the main function ---
 if __name__ == "__main__":
     main()

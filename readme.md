@@ -6,7 +6,7 @@ This project is a collection of Python scripts designed to scrape news articles 
 
 ## Features
 
-The scraper currently supports the following news sources:
+The scraper currently supports the following 12 news sources:
 
 * ASIC (asic.gov.au)
 * Ausblock (ausblock.com.au)

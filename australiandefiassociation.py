@@ -1,109 +1,127 @@
-# rss_checker.py
-# Updated script to fetch RSS feed entries from https://australiandefiassociation.substack.com/feed
-# and store them in articles.csv with columns: date, source, url, title, done.
-# Maintains state by reading existing CSV and only adding new entries for this source.
-
 import csv
 import os
-from datetime import datetime
+from datetime import datetime, timezone # Added timezone
 import feedparser
 
 # Constants
 RSS_URL = 'https://australiandefiassociation.substack.com/feed'
 CSV_FILE = 'articles.csv'
 SOURCE = 'australiandefiassociation.substack.com'
-
+CSV_HEADERS = ['date', 'source', 'url', 'title', 'done'] # Define headers
 
 def load_existing_urls():
-    """
-    Load existing URLs for our source from the CSV.
-    Returns a set of URLs already present.
-    """
+    """Load existing URLs for our source from the CSV."""
     urls = set()
-    if not os.path.exists(CSV_FILE):
+    if not os.path.exists(CSV_FILE) or os.path.getsize(CSV_FILE) == 0:
+        # Create file with header if it doesn't exist or is empty
+        try:
+            with open(CSV_FILE, 'w', newline='', encoding='utf-8') as csvfile_init:
+                writer = csv.DictWriter(csvfile_init, fieldnames=CSV_HEADERS)
+                writer.writeheader()
+            print(f"Initialized CSV file '{CSV_FILE}' with headers.")
+        except IOError as e:
+            print(f"Error initializing CSV file '{CSV_FILE}': {e}")
         return urls
 
-    with open(CSV_FILE, newline='', encoding='utf-8') as csvfile:
-        reader = csv.DictReader(csvfile)
-        for row in reader:
-            if row.get('source') == SOURCE:
-                urls.add(row.get('url'))
+    try:
+        with open(CSV_FILE, newline='', encoding='utf-8') as csvfile:
+            reader = csv.DictReader(csvfile)
+            if not reader.fieldnames or not all(h in reader.fieldnames for h in ['url', 'source']):
+                print(f"Warning: CSV file '{CSV_FILE}' is missing 'url' or 'source' headers.")
+                return urls # Cannot reliably read
+            for row in reader:
+                if row.get('source') == SOURCE and row.get('url'):
+                    urls.add(row.get('url'))
+    except Exception as e:
+        print(f"Error loading existing URLs from '{CSV_FILE}': {e}")
     return urls
 
 
-def append_articles(entries):
+def append_articles_to_csv(entries_to_append):
     """
-    Append new entries to the CSV in chronological order (oldest first).
-    Each entry: date (ISO-8601), source, url, title, done (blank)
+    Append new entries to the CSV.
+    Date format: YYYY-MM-DDTHH:MM:SS+00:00 (UTC).
     """
-    file_exists = os.path.exists(CSV_FILE)
-    mode = 'a' if file_exists else 'w'
-
-    with open(CSV_FILE, mode, newline='', encoding='utf-8') as csvfile:
-        fieldnames = ['date', 'source', 'url', 'title', 'done']
-        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-
-        if not file_exists:
-            writer.writeheader()
-
-        for entry in entries:
-            # Convert published date to ISO-8601
-            published = getattr(entry, 'published', None) or entry.get('updated')
-            # Parse using feedparser's structured time
-            dt = datetime(*entry.published_parsed[:6]) if entry.get('published_parsed') else datetime.utcnow()
-            iso_date = dt.isoformat()
-
-            writer.writerow({
-                'date': iso_date,
-                'source': SOURCE,
-                'url': entry.link,
-                'title': entry.title,
-                'done': ''
-            })
+    # File existence and header are handled by load_existing_urls or initial creation
+    # We open in append mode.
+    try:
+        with open(CSV_FILE, 'a', newline='', encoding='utf-8') as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=CSV_HEADERS)
+            for entry_data in entries_to_append: # Expecting a list of dicts
+                writer.writerow(entry_data)
+        print(f"Successfully appended {len(entries_to_append)} new articles to '{CSV_FILE}'.")
+    except IOError as e:
+        print(f"Error appending articles to '{CSV_FILE}': {e}")
 
 
 def main():
-    # Fetch and parse feed
+    print("--- Starting Australian DeFi Association Scraper (Date Format UTC) ---")
     feed = feedparser.parse(RSS_URL)
-    entries = feed.entries
-
-    if not entries:
+    if not feed.entries:
         print("⚠️ No entries found in feed.")
         return
 
-    # Load existing URLs to detect new ones
     existing_urls = load_existing_urls()
+    new_articles_for_csv = []
+    MIN_YEAR = 2025
 
-    # Filter only new entries and ensure they are from 2025 onwards, in chronological order (oldest first)
-    new_entries = []
-    for entry in reversed(entries):
-        # Skip if already processed
+    # Process entries (feedparser usually provides them newest first, so iterate normally or reverse if needed for chronological add)
+    # To add them chronologically (oldest first to CSV), we can collect and then sort.
+    
+    collected_entries = []
+    for entry in feed.entries:
         if entry.link in existing_urls:
             continue
 
-        # Retrieve publication date
+        # Parse date from feedparser's structured time tuple (assumed UTC by feedparser)
+        dt_obj_utc = None
         if entry.get('published_parsed'):
-            dt = datetime(*entry.published_parsed[:6])
+            # Create datetime object from tuple: (year, month, day, hour, minute, second, ...)
+            # and make it timezone-aware UTC
+            try:
+                pp = entry.published_parsed
+                dt_obj_utc = datetime(pp[0], pp[1], pp[2], pp[3], pp[4], pp[5], tzinfo=timezone.utc)
+            except (TypeError, IndexError, ValueError) as e:
+                print(f"Warning: Could not parse 'published_parsed' for {entry.link}: {e}. Using current UTC time as fallback.")
+                dt_obj_utc = datetime.now(timezone.utc) # Fallback
         else:
-            dt = datetime.utcnow()
+            # Fallback if 'published_parsed' is missing
+            print(f"Warning: 'published_parsed' missing for {entry.link}. Using current UTC time.")
+            dt_obj_utc = datetime.now(timezone.utc)
 
-        # Enforce articles from 2025 onwards
-        if dt.year < 2025:
+        if dt_obj_utc.year < MIN_YEAR:
+            # print(f"Debug: Skipping article from {dt_obj_utc.year}: {entry.title}")
             continue
+        
+        # Format to YYYY-MM-DDTHH:MM:SS+00:00
+        iso_date_utc = dt_obj_utc.strftime('%Y-%m-%dT%H:%M:%S+00:00')
 
-        new_entries.append(entry)
+        collected_entries.append({
+            'date': iso_date_utc,
+            'source': SOURCE,
+            'url': entry.link,
+            'title': entry.title.strip() if entry.title else "No Title",
+            'done': '',
+            '_sort_date_obj': dt_obj_utc # For sorting
+        })
 
-    if not new_entries:
+    if not collected_entries:
         print("No new articles from 2025 onwards to add.")
         return
 
-    # Append new entries
-    append_articles(new_entries)
+    # Sort new entries by date (oldest first)
+    collected_entries.sort(key=lambda x: x['_sort_date_obj'])
 
-    # Output added URLs
-    for entry in new_entries:
-        print(entry.link)
+    # Prepare for CSV by removing the temporary sort key
+    for item in collected_entries:
+        del item['_sort_date_obj']
+        
+    append_articles_to_csv(collected_entries)
 
+    # Output added URLs (optional)
+    # for entry_dict in collected_entries:
+    #     print(f"Added: {entry_dict['url']}")
+    print("--- Australian DeFi Association Scraper Finished ---")
 
 if __name__ == '__main__':
     main()

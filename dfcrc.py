@@ -1,10 +1,7 @@
 #!/usr/bin/env python3
 """
-Scrapes project updates from the DFRC CBDC Acacia project page and
-media releases from the DFRC news page.
-Parses meeting updates and news articles, extracts details, cleans text, 
-and saves to a CSV file with the structure: date,source,url,title,done.
-Stops parsing project updates when it encounters the "Previous IAG Material" section.
+Scrapes DFRC CBDC Acacia project updates and media releases.
+Dates are stored in ISO 8601 UTC format: YYYY-MM-DDTHH:MM:SS+00:00.
 """
 
 import requests
@@ -13,355 +10,286 @@ import os
 import csv
 import re
 from dateutil import parser as dateparser
-import datetime
+import datetime # Keep standard datetime
 from urllib.parse import urljoin
-import unicodedata # Added for Unicode normalization
+import unicodedata
+from datetime import timezone # Import timezone
 
 # --- Configuration ---
 PROJECT_URL = 'https://dfcrc.com.au/projects-cbdc-acacia/'
 MEDIA_RELEASES_URL = 'https://dfcrc.com.au/news/media-releases/'
 CSV_FILE = 'articles.csv'
-STOP_HEADING_TEXT = "Previous IAG Material" # For project updates page
+STOP_HEADING_TEXT = "Previous IAG Material"
+CSV_HEADERS = ['date', 'source', 'url', 'title', 'done']
 
-# --- Text Cleaning Function ---
 def clean_text(text):
-    """
-    Cleans text by normalizing Unicode, replacing specific problematic characters,
-    and removing non-printable characters.
-    """
-    if not text:
-        return ""
-    
-    # Normalize Unicode to NFKC form (Compatibility Composition)
-    # This can help with various Unicode quirks, e.g., converting non-breaking spaces to regular spaces.
+    if not text: return ""
     try:
         normalized_text = unicodedata.normalize('NFKC', text)
-    except TypeError: # Handle if text is not a string (though it should be)
+    except TypeError:
         normalized_text = str(text)
-
-    # Replace specific typographic punctuation with ASCII equivalents
-    replacements = {
-        '’': "'",  # Right single quotation mark
-        '‘': "'",  # Left single quotation mark
-        '”': '"',  # Right double quotation mark
-        '“': '"',  # Left double quotation mark
-        '–': '-',  # En dash
-        '—': '-',  # Em dash
-        # Add more replacements if needed
-    }
+    replacements = {'’': "'", '‘': "'", '”': '"', '“': '"', '–': '-', '—': '-'}
     for char, replacement in replacements.items():
         normalized_text = normalized_text.replace(char, replacement)
-    
-    # Remove non-printable characters (except for common whitespace like space, tab, newline)
-    # This helps remove invisible characters.
-    # Allow newline and tab for potential multi-line text if desired, though titles are usually single line.
     cleaned_text = ''.join(char for char in normalized_text if char.isprintable() or char in '\n\t')
-    
-    # Replace multiple spaces with a single space and strip leading/trailing whitespace
-    cleaned_text = re.sub(r'\s+', ' ', cleaned_text).strip()
-    
-    return cleaned_text
-
-# --- CSV Functions ---
+    return re.sub(r'\s+', ' ', cleaned_text).strip()
 
 def ensure_csv_header():
-    """Create CSV file with header if it doesn't yet exist."""
-    fieldnames = ['date', 'source', 'url', 'title', 'done']
-    if not os.path.exists(CSV_FILE):
+    if not os.path.exists(CSV_FILE) or os.path.getsize(CSV_FILE) == 0:
         with open(CSV_FILE, 'w', newline='', encoding='utf-8') as f:
-            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer = csv.DictWriter(f, fieldnames=CSV_HEADERS)
             writer.writeheader()
-        print(f"CSV file '{CSV_FILE}' created with headers: {', '.join(fieldnames)}")
+        print(f"Initialized CSV file '{CSV_FILE}' with headers.")
 
-def load_seen_article_urls():
-    """
-    Read existing CSV and return a set of article URLs (from 'url' column) already recorded.
-    This helps in avoiding duplicate entries from both project updates and media releases.
-    """
+def load_seen_data():
+    """Loads seen URLs and (title, date_str) tuples for duplicate checking."""
     seen_urls = set()
-    if not os.path.exists(CSV_FILE):
-        return seen_urls
+    seen_title_date_strs = set() # Store date as original ISO string from CSV for exact match
+    if not os.path.exists(CSV_FILE) or os.path.getsize(CSV_FILE) == 0:
+        return seen_urls, seen_title_date_strs
     try:
         with open(CSV_FILE, 'r', newline='', encoding='utf-8') as f:
             reader = csv.DictReader(f)
-            if reader.fieldnames and 'url' in reader.fieldnames:
-                for row in reader:
-                    if row.get('url') and row['url'].strip(): 
+            if not reader.fieldnames or not all(h in reader.fieldnames for h in ['url', 'title', 'date', 'source']):
+                print(f"Warning: CSV '{CSV_FILE}' missing required headers.")
+                return seen_urls, seen_title_date_strs
+            for row in reader:
+                # Only consider items from DFRC sources for this script's duplicate check
+                if row.get('source') == PROJECT_URL or row.get('source') == MEDIA_RELEASES_URL:
+                    if row.get('url') and row['url'].strip():
                         seen_urls.add(row['url'])
-            elif not reader.fieldnames:
-                print(f"Warning: CSV file '{CSV_FILE}' appears to be empty (no headers found).")
-            else: 
-                print(f"Warning: CSV file '{CSV_FILE}' header is missing 'url' column.")
-    except FileNotFoundError:
-        print(f"Info: CSV file '{CSV_FILE}' not found. Will be created.")
-        pass 
+                    # For items without a URL, or as an additional check
+                    if row.get('title') and row.get('date'):
+                        seen_title_date_strs.add((clean_text(row['title']), row['date']))
     except Exception as e:
-        print(f"Error loading seen article URLs from {CSV_FILE}: {e}")
-    return seen_urls
+        print(f"Error loading seen data from {CSV_FILE}: {e}")
+    return seen_urls, seen_title_date_strs
 
 
-def append_to_csv(iso_date, source_url, item_url, item_title):
-    """Append a row to the CSV file."""
-    fieldnames = ['date', 'source', 'url', 'title', 'done']
+def append_to_csv(articles_list):
+    """Appends a list of article dictionaries to the CSV file."""
+    if not articles_list: return
+    # Header is ensured by ensure_csv_header() before this function is typically called if file is new
     try:
         with open(CSV_FILE, 'a', newline='', encoding='utf-8') as f:
-            writer = csv.DictWriter(f, fieldnames=fieldnames)
-            writer.writerow({
-                'date': iso_date,
-                'source': source_url,
-                'url': item_url or '', 
-                'title': item_title, # Already cleaned before this function is called
-                'done': '' 
-            })
+            writer = csv.DictWriter(f, fieldnames=CSV_HEADERS)
+            for article_dict in articles_list:
+                 # Ensure only columns in CSV_HEADERS are written, and in correct order
+                row_to_write = {col: article_dict.get(col, '') for col in CSV_HEADERS}
+                writer.writerow(row_to_write)
+        print(f"Appended {len(articles_list)} new items to '{CSV_FILE}'.")
     except Exception as e:
         print(f"Error appending to CSV: {e}")
 
-# --- Web Scraping and Parsing Functions ---
 
 def fetch_project_updates():
-    """
-    Fetches the DFRC CBDC Acacia project page, parses meeting updates.
-    Returns a list of dictionaries, each formatted for CSV writing.
-    """
     print(f"Fetching project updates from {PROJECT_URL}...")
     items_for_csv = []
     try:
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-        }
+        headers = {'User-Agent': 'Mozilla/5.0 (DFCRC Scraper)'}
         resp = requests.get(PROJECT_URL, timeout=30, headers=headers)
         resp.raise_for_status()
     except requests.exceptions.RequestException as e:
-        print(f"Error fetching URL {PROJECT_URL}: {e}")
+        print(f"Error fetching {PROJECT_URL}: {e}")
         return items_for_csv
 
     soup = BeautifulSoup(resp.content, 'html.parser')
     all_h3_tags = soup.find_all('h3')
-    print(f"Found {len(all_h3_tags)} h3 tags on the project page.")
+    MIN_YEAR = 2025
 
     for h3_tag in all_h3_tags:
-        h3_text_raw = h3_tag.get_text(strip=True) 
-        h3_text_cleaned = clean_text(h3_text_raw) # Clean the h3 text
-
-        if h3_text_cleaned == STOP_HEADING_TEXT: # Compare with cleaned stop heading
-            print(f"Reached stop heading: '{STOP_HEADING_TEXT}'. Stopping parse for further project updates.")
+        h3_text_cleaned = clean_text(h3_tag.get_text(strip=True))
+        if h3_text_cleaned == STOP_HEADING_TEXT:
+            print(f"Reached stop heading: '{STOP_HEADING_TEXT}'.")
             break
 
-        strong_tag_in_h3 = h3_tag.find('strong')
-        candidate_title_text_for_meeting_check_raw = h3_text_raw
-        if strong_tag_in_h3:
-            candidate_title_text_for_meeting_check_raw = strong_tag_in_h3.get_text(strip=True)
-        
-        candidate_title_text_for_meeting_check_cleaned = clean_text(candidate_title_text_for_meeting_check_raw)
+        # Focus on h3 tags that seem to represent meeting updates
+        if "Meeting" in h3_text_cleaned or "Update" in h3_text_cleaned: # Broader check
+            current_update_title_cleaned = h3_text_cleaned
+            
+            # Date parsing from title (e.g., "Meeting 22 May 2025", "Update 22 May 2025")
+            # This is a simplified regex; might need adjustment if format varies widely
+            date_match = re.search(r'(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4})', current_update_title_cleaned, re.IGNORECASE)
+            raw_date_str_from_title = date_match.group(1) if date_match else None
 
-        if "Meeting" in candidate_title_text_for_meeting_check_cleaned: # Check cleaned text
-            current_update_h3_title = h3_text_cleaned # Use cleaned h3 text
-            print(f"Processing potential project update: \"{current_update_h3_title}\"")
-
-            raw_date_str = ""
-            # Extract date from the cleaned candidate text
-            if "Meeting" in candidate_title_text_for_meeting_check_cleaned:
-                raw_date_str = re.sub(r'Meeting\s*', '', candidate_title_text_for_meeting_check_cleaned, flags=re.IGNORECASE).strip()
-            elif "Meeting" in current_update_h3_title: # Fallback to cleaned h3 title
-                raw_date_str = re.sub(r'Meeting\s*', '', current_update_h3_title, flags=re.IGNORECASE).strip()
-
-
-            parsed_date_obj = datetime.datetime.min 
-            parsed_date_iso = ""
-            if raw_date_str:
+            parsed_date_obj_utc = None
+            if raw_date_str_from_title:
                 try:
-                    date_to_parse = raw_date_str.split(" and ")[0].strip()
-                    date_to_parse_cleaned = re.sub(r'(\d+)(st|nd|rd|th)', r'\1', date_to_parse, flags=re.IGNORECASE)
-                    parsed_date_obj = dateparser.parse(date_to_parse_cleaned)
-                    parsed_date_iso = parsed_date_obj.isoformat() 
-                except (dateparser.ParserError, ValueError) as e:
-                    print(f"  - Could not parse date from '{raw_date_str}' for project update '{current_update_h3_title}'. Error: {e}")
-            else:
-                print(f"  - No date string extracted for project update '{current_update_h3_title}'.")
+                    # dateparser.parse is flexible
+                    parsed_dt_naive = dateparser.parse(raw_date_str_from_title)
+                    # Assume naive date is UTC for project updates, or local if known
+                    parsed_date_obj_utc = parsed_dt_naive.replace(tzinfo=timezone.utc)
+                except (dateparser.ParserError, ValueError) as e_date:
+                    print(f"  - Could not parse date from title '{raw_date_str_from_title}' for '{current_update_title_cleaned}'. Error: {e_date}")
+            else: # Fallback: try to find date in subsequent text if not in H3
+                # This would require more complex logic to associate text with H3
+                print(f"  - No clear date in title for '{current_update_title_cleaned}'. Using current UTC as fallback if PDF found.")
+                # If no date found in title, but a PDF is linked, we might use current time or skip.
+                # For now, let's require a date from title for project updates.
+                # If a PDF is found but no date, it's hard to timestamp accurately.
+                # Defaulting to a placeholder or skipping might be options.
+                # Let's try to make a fallback to current time if a PDF is found.
+                if not parsed_date_obj_utc: # If still no date
+                    parsed_date_obj_utc = datetime.datetime.now(timezone.utc) # Fallback to now if PDF found later
+
+            if parsed_date_obj_utc and parsed_date_obj_utc.year < MIN_YEAR:
+                # print(f"  - Skipping old project update from {parsed_date_obj_utc.year}: {current_update_title_cleaned}")
+                continue
 
             pdf_link_found = None
-            for sibling in h3_tag.find_next_siblings():
-                if sibling.name == 'h3':
-                    break
-                if sibling.name == 'ul':
-                    for li in sibling.find_all('li'):
-                        a_tag = li.find('a', href=True)
-                        if a_tag and a_tag['href'].lower().endswith('.pdf'):
-                            pdf_url = a_tag['href']
-                            pdf_link_found = urljoin(PROJECT_URL, pdf_url) 
-                            print(f"  - Found PDF: {pdf_link_found}")
-            
-            # Use the cleaned h3 title for the CSV
-            combined_csv_title = f"DFCRC Acacia {current_update_h3_title}"
+            # Look for PDF links in <ul> following the <h3>
+            ul_sibling = h3_tag.find_next_sibling('ul')
+            if ul_sibling:
+                for li in ul_sibling.find_all('li'):
+                    a_tag = li.find('a', href=lambda href: href and href.lower().endswith('.pdf'))
+                    if a_tag:
+                        pdf_link_found = urljoin(PROJECT_URL, a_tag['href'])
+                        # Use the PDF link's text as part of title if H3 is too generic like "Update"
+                        pdf_title_text = clean_text(a_tag.get_text(strip=True))
+                        if "Update" == current_update_title_cleaned and pdf_title_text:
+                             current_update_title_cleaned = f"Update: {pdf_title_text}"
+                        break # Take first PDF link under this H3
 
-            items_for_csv.append({
-                'parsed_date_obj': parsed_date_obj, 
-                'csv_date': parsed_date_iso,
-                'csv_source': PROJECT_URL,
-                'csv_url': pdf_link_found, 
-                'csv_title': combined_csv_title, # This title is now cleaned
-            })
-            print(f"  --- Collected project update for CSV: Title='{combined_csv_title}', Date='{parsed_date_iso or 'N/A'}', PDF URL='{pdf_link_found or 'N/A'}'")
+            # Only add if we have a PDF link or a very specific title indicating an update
+            if pdf_link_found or "Meeting" in current_update_title_cleaned :
+                iso_date_utc_str = parsed_date_obj_utc.strftime('%Y-%m-%dT%H:%M:%S+00:00') if parsed_date_obj_utc else ""
+                
+                # Construct a meaningful title
+                csv_title = f"DFCRC Acacia: {current_update_title_cleaned}"
+                if pdf_link_found and not ("Meeting" in current_update_title_cleaned or "Update" in current_update_title_cleaned):
+                    # If title was generic and we found a PDF, try to use PDF name
+                    pdf_name = os.path.basename(pdf_link_found)
+                    csv_title = f"DFCRC Acacia PDF: {pdf_name}"
+
+
+                items_for_csv.append({
+                    'parsed_date_obj_utc': parsed_date_obj_utc,
+                    'date': iso_date_utc_str, # ISO UTC string
+                    'source': PROJECT_URL, # Source is the project page itself
+                    'url': pdf_link_found, # URL of the PDF if found
+                    'title': csv_title,
+                    'done': ''
+                })
     return items_for_csv
 
+
 def fetch_media_releases():
-    """
-    Fetches the DFRC media releases page, parses news articles.
-    Returns a list of dictionaries, each formatted for CSV writing.
-    """
     print(f"Fetching media releases from {MEDIA_RELEASES_URL}...")
     items_for_csv = []
     try:
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-        }
+        headers = {'User-Agent': 'Mozilla/5.0 (DFCRC Scraper)'}
         resp = requests.get(MEDIA_RELEASES_URL, timeout=30, headers=headers)
         resp.raise_for_status()
     except requests.exceptions.RequestException as e:
-        print(f"Error fetching URL {MEDIA_RELEASES_URL}: {e}")
+        print(f"Error fetching {MEDIA_RELEASES_URL}: {e}")
         return items_for_csv
 
     soup = BeautifulSoup(resp.content, 'html.parser')
-    latest_posts = soup.find_all(class_="latest_post") 
-    print(f"Found {len(latest_posts)} 'latest_post' items on the media releases page.")
+    # Assuming media releases are in elements with class "latest_post"
+    latest_posts_elements = soup.find_all(class_="latest_post")
+    MIN_YEAR = 2025
 
-    for post in latest_posts:
-        date_tag = post.find(class_="date entry_date updated")
-        link_tag = post.find(class_="latest_post_title entry_title") 
+    for post_element in latest_posts_elements:
+        date_tag_element = post_element.find(class_="date entry_date updated")
+        # Title link is usually within a specific class like "latest_post_title" and is an <a> tag
+        link_tag_element = post_element.find(class_="latest_post_title", name='a') 
+        if not link_tag_element: # Fallback if title is not directly 'a' but inside another tag
+            title_container = post_element.find(class_="latest_post_title")
+            if title_container:
+                link_tag_element = title_container.find('a')
 
-        raw_date_str = ""
-        parsed_date_obj = datetime.datetime.min
-        parsed_date_iso = ""
-        article_url = None
-        article_title_raw = "N/A"
+
+        parsed_date_obj_utc = None
+        iso_date_utc_str = ""
+        article_url_val = None
         article_title_cleaned = "N/A"
 
-
-        if date_tag:
-            raw_date_str = date_tag.get_text(strip=True) # Date usually doesn't need extensive cleaning
+        if date_tag_element:
+            raw_date_str = date_tag_element.get_text(strip=True)
             try:
-                parsed_date_obj = dateparser.parse(raw_date_str)
-                parsed_date_iso = parsed_date_obj.isoformat()
-            except (dateparser.ParserError, ValueError) as e:
-                print(f"  - Could not parse date from '{raw_date_str}' for a media release. Error: {e}")
-        else:
-            print("  - Date tag not found for a media release item.")
-
-        if link_tag and link_tag.name == 'a' and link_tag.has_attr('href'):
-            article_url = urljoin(MEDIA_RELEASES_URL, link_tag['href']) 
-            article_title_raw = link_tag.get_text(strip=True)
-        else:
-            if link_tag: 
-                actual_a_tag = link_tag.find('a')
-                if actual_a_tag and actual_a_tag.has_attr('href'):
-                    article_url = urljoin(MEDIA_RELEASES_URL, actual_a_tag['href'])
-                    article_title_raw = actual_a_tag.get_text(strip=True)
-                else:
-                    print("  - Link tag or href not found for a media release item's title.")
-            else:
-                 print("  - 'latest_post_title' element not found for a media release item.")
+                parsed_dt_naive = dateparser.parse(raw_date_str)
+                # Assume naive date from media releases is UTC or convert if local TZ known
+                parsed_date_obj_utc = parsed_dt_naive.replace(tzinfo=timezone.utc)
+                iso_date_utc_str = parsed_date_obj_utc.strftime('%Y-%m-%dT%H:%M:%S+00:00')
+            except (dateparser.ParserError, ValueError) as e_date:
+                print(f"  - Could not parse media release date '{raw_date_str}'. Error: {e_date}")
         
-        article_title_cleaned = clean_text(article_title_raw) # Clean the extracted title
-
-        print(f"Processing media release: Title='{article_title_cleaned}', Date='{raw_date_str}'")
+        if link_tag_element and link_tag_element.has_attr('href'):
+            article_url_val = urljoin(MEDIA_RELEASES_URL, link_tag_element['href'])
+            article_title_cleaned = clean_text(link_tag_element.get_text(strip=True))
         
-        items_for_csv.append({
-            'parsed_date_obj': parsed_date_obj,
-            'csv_date': parsed_date_iso,
-            'csv_source': MEDIA_RELEASES_URL,
-            'csv_url': article_url,
-            'csv_title': article_title_cleaned, # Use cleaned title for CSV
-        })
-        print(f"  --- Collected media release for CSV: Title='{article_title_cleaned}', Date='{parsed_date_iso or 'N/A'}', URL='{article_url or 'N/A'}'")
+        if parsed_date_obj_utc and parsed_date_obj_utc.year < MIN_YEAR:
+            # print(f"  - Skipping old media release from {parsed_date_obj_utc.year}: {article_title_cleaned}")
+            continue
+            
+        if article_url_val and article_title_cleaned != "N/A" and iso_date_utc_str: # Ensure essential data is present
+            items_for_csv.append({
+                'parsed_date_obj_utc': parsed_date_obj_utc,
+                'date': iso_date_utc_str, # ISO UTC string
+                'source': MEDIA_RELEASES_URL, # Source is the media releases page
+                'url': article_url_val,
+                'title': article_title_cleaned,
+                'done': ''
+            })
     return items_for_csv
 
-# --- Main Execution ---
-
 def main():
-    """Main function to orchestrate the scraping from both sources and CSV writing."""
-    print("Starting DFRC project update and media release scraper...")
+    print("--- Starting DFRC Scraper (Project Updates & Media Releases, Date Format UTC) ---")
     ensure_csv_header()
-    seen_article_urls = load_seen_article_urls() 
-    print(f"Loaded {len(seen_article_urls)} seen article URLs (from 'url' column) from '{CSV_FILE}'.")
+    seen_urls, seen_title_date_strs = load_seen_data()
+    print(f"Loaded {len(seen_urls)} seen URLs and {len(seen_title_date_strs)} seen (title, date_str) combos for DFRC sources.")
 
-    all_new_items_for_csv = []
+    all_new_items_to_add = []
     
-    # Prepare a set of (title, date) tuples from existing CSV for duplicate checking of URL-less items
-    # This is done once to avoid re-reading CSV in the loop
-    existing_title_dates = set()
-    if os.path.exists(CSV_FILE) and os.path.getsize(CSV_FILE) > 50 : # Check if CSV has content
-        try:
-            with open(CSV_FILE, 'r', newline='', encoding='utf-8') as f_read:
-                reader = csv.DictReader(f_read)
-                if reader.fieldnames and 'title' in reader.fieldnames and 'date' in reader.fieldnames:
-                    for row in reader:
-                        existing_title_dates.add((row['title'], row['date']))
-        except Exception as e:
-            print(f"Error reading existing CSV for duplicate check: {e}")
-
-
     # Fetch and filter project updates
-    project_updates = fetch_project_updates()
-    print(f"\nFetched {len(project_updates)} potential project updates.")
-    for item in project_updates:
-        # item['csv_title'] is already cleaned
+    project_updates_data = fetch_project_updates()
+    print(f"\nFetched {len(project_updates_data)} potential project updates.")
+    for item_data in project_updates_data:
         is_duplicate = False
-        if item['csv_url']:
-            if item['csv_url'] in seen_article_urls:
-                is_duplicate = True
-                print(f"Skipping already seen project update (by URL): \"{item['csv_title']}\"")
-        elif (item['csv_title'], item['csv_date']) in existing_title_dates:
+        # Check by URL if available
+        if item_data.get('url') and item_data['url'] in seen_urls:
             is_duplicate = True
-            print(f"Skipping already seen project update (by title and date, no URL): \"{item['csv_title']}\"")
+        # If no URL, or as fallback, check by cleaned title and ISO date string
+        elif (item_data['title'], item_data['date']) in seen_title_date_strs:
+            is_duplicate = True
         
         if not is_duplicate:
-            all_new_items_for_csv.append(item)
-            if item['csv_url']: 
-                 seen_article_urls.add(item['csv_url']) # Add to current run's seen URLs
-            # Add to current run's seen title/dates as well to prevent adding from media_releases if it's a duplicate
-            existing_title_dates.add((item['csv_title'], item['csv_date']))
-
+            all_new_items_to_add.append(item_data)
+            if item_data.get('url'): seen_urls.add(item_data['url'])
+            seen_title_date_strs.add((item_data['title'], item_data['date'])) # Add to current run's seen set
+        # else:
+            # print(f"Skipping duplicate project update: \"{item_data['title']}\"")
 
     # Fetch and filter media releases
-    media_releases = fetch_media_releases()
-    print(f"\nFetched {len(media_releases)} potential media releases.")
-    for item in media_releases:
-        # item['csv_title'] is already cleaned
+    media_releases_data = fetch_media_releases()
+    print(f"\nFetched {len(media_releases_data)} potential media releases.")
+    for item_data in media_releases_data:
         is_duplicate = False
-        if item['csv_url']:
-            if item['csv_url'] in seen_article_urls:
-                is_duplicate = True
-                print(f"Skipping already seen media release (by URL): \"{item['csv_title']}\"")
-        elif (item['csv_title'], item['csv_date']) in existing_title_dates:
+        if item_data.get('url') and item_data['url'] in seen_urls:
             is_duplicate = True
-            print(f"Skipping already seen media release (by title and date, no URL): \"{item['csv_title']}\"")
+        elif (item_data['title'], item_data['date']) in seen_title_date_strs:
+            is_duplicate = True
 
         if not is_duplicate:
-            all_new_items_for_csv.append(item)
-            # No need to add to seen_article_urls or existing_title_dates here again,
-            # as all_new_items_for_csv is the final list for appending.
-            # However, if an item was added from project_updates without a URL,
-            # and media_releases has the same title/date WITH a URL, this logic is fine.
+            all_new_items_to_add.append(item_data)
+            # No need to add to seen_urls/seen_title_date_strs again here,
+            # as all_new_items_to_add is the final list.
+        # else:
+            # print(f"Skipping duplicate media release: \"{item_data['title']}\"")
 
-    # Sort all new items from both sources by date
-    all_new_items_for_csv.sort(key=lambda x: x['parsed_date_obj'])
-    
-    new_updates_count = 0
-    if not all_new_items_for_csv:
-        print("\nNo new updates or releases to add to the CSV.")
+    if not all_new_items_to_add:
+        print("\nNo new DFRC updates or releases to add.")
     else:
-        print(f"\nFound {len(all_new_items_for_csv)} new items in total to add after filtering. Appending to CSV...")
-        for item_to_add in all_new_items_for_csv: # Renamed to avoid conflict
-            append_to_csv(
-                item_to_add['csv_date'],
-                item_to_add['csv_source'],
-                item_to_add['csv_url'],
-                item_to_add['csv_title']
-            )
-            print(f"Appended to CSV: \"{item_to_add['csv_title']}\" (Source: {item_to_add['csv_source']}, URL: {item_to_add['csv_url'] or 'N/A'})")
-            new_updates_count += 1
+        # Sort all new items by their datetime object (oldest first)
+        all_new_items_to_add.sort(key=lambda x: x['parsed_date_obj_utc'] if x['parsed_date_obj_utc'] else datetime.datetime.min.replace(tzinfo=timezone.utc))
+        
+        # Prepare for CSV (remove temporary sort key if it was consistently added)
+        # The current structure directly uses dict keys matching CSV_HEADERS for append_to_csv
+        
+        print(f"\nFound {len(all_new_items_to_add)} new DFRC items in total. Appending...")
+        append_to_csv(all_new_items_to_add)
 
-    print(f"\nScript finished. Added {new_updates_count} new item(s) to '{CSV_FILE}'.")
+    print(f"--- DFRC Scraper Finished ---")
 
 if __name__ == '__main__':
     main()

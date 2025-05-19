@@ -22,12 +22,12 @@ OUTPUT_CSV = "articles.csv"
 KEYWORDS_TXT = "web3keywords.txt"
 CHECKED_URLS_FILE = "asic_checked.txt"
 SOURCE_IDENTIFIER = "asic.gov.au"
-OUTPUT_COLUMNS = ['date', 'source', 'url', 'title', 'done'] # 'title' now holds found keywords
+OUTPUT_COLUMNS = ['date', 'source', 'url', 'title', 'done']
 MAIN_PAGE_LOAD_WAIT = 10
 REQUEST_DELAY = 1.5
 USER_AGENT = 'Python Selenium Scraper Bot (Educational Use)'
-MIN_YEAR_YY = 25
-CONTEXT_CHARS = 50 # Keep for debug printing in find_matching_keywords
+MIN_YEAR_YY = 25 # Corresponds to 2025
+CONTEXT_CHARS = 50
 
 # --- Helper Functions ---
 
@@ -102,11 +102,8 @@ def find_matching_keywords(text, keywords):
             context_start = max(0, start - CONTEXT_CHARS)
             context_end = min(len(text), end + CONTEXT_CHARS)
             context_snippet = text[context_start:context_end].replace('\n', ' ').replace('\r', '')
-            # print(f"    DEBUG: Found keyword '{keyword}' -> Context: ...{context_snippet}...") # Keep commented unless debugging
             if keyword not in [k for k, c in found_keywords_details]:
                  found_keywords_details.append((keyword, context_snippet))
-            # break # Optional: only report first occurrence
-
     return [k for k, c in found_keywords_details]
 
 
@@ -121,19 +118,21 @@ def extract_sort_key_from_url(url):
         try:
             year_yy = int(match.group(1))
             article_num = int(match.group(2))
-            if year_yy < MIN_YEAR_YY:
-                 return (99, 9999)
+            # Assuming MIN_YEAR_YY is the threshold for '20YY'
+            # e.g., if MIN_YEAR_YY is 25, it means 2025
+            if year_yy < MIN_YEAR_YY: # Check against the two-digit year
+                 return (99, 9999) # Invalid year, sort last
             return (year_yy, article_num)
         except ValueError:
              print(f"Warning: Invalid number format in sort key for URL: {url}")
              return (99, 9999)
     else:
-        return (99, 9999)
+        return (99, 9999) # No pattern match, sort last
 
 def extract_and_format_date(page_source):
     """
     Extracts date from HTML source using the <time class="nh-mr-date"> tag
-    and returns it in YYYY-MM-DDTHH:MM:SS+00:00 format.
+    and returns it in YYYY-MM-DDTHH:MM:SS+00:00 format (UTC).
     """
     try:
         soup = BeautifulSoup(page_source, 'html.parser')
@@ -145,8 +144,9 @@ def extract_and_format_date(page_source):
                 try:
                     # Parse the extracted string (e.g., "14 April 2025")
                     parsed_date = datetime.strptime(date_str, '%d %B %Y')
-                    # Format into ISO YYYY-MM-DD and add zeroed time + UTC offset
-                    iso_date_full = parsed_date.strftime('%Y-%m-%dT00:00:00+00:00')
+                    # Make it timezone-aware (UTC) and format
+                    utc_date = parsed_date.replace(tzinfo=timezone.utc)
+                    iso_date_full = utc_date.strftime('%Y-%m-%dT%H:%M:%S+00:00')
                     print(f"    Extracted and formatted date: {iso_date_full}")
                     return iso_date_full
                 except ValueError:
@@ -156,6 +156,25 @@ def extract_and_format_date(page_source):
                 print("    Warning: Found date tag but it was empty.")
                 return None
         else:
+            # Fallback: Try to find date in <p class="text-sm text-gray-500"> if time tag fails
+            # This is a hypothetical fallback, adjust selector if needed
+            fallback_date_tag = soup.select_one('p.text-sm.text-gray-500') # Example selector
+            if fallback_date_tag:
+                date_str_fallback = fallback_date_tag.get_text(strip=True)
+                # Attempt to parse common date formats, e.g., "Published: April 14, 2025"
+                # This part would need more robust parsing if the format varies
+                match = re.search(r'(\w+\s\d{1,2},\s\d{4})', date_str_fallback)
+                if match:
+                    try:
+                        parsed_date = datetime.strptime(match.group(1), '%B %d, %Y')
+                        utc_date = parsed_date.replace(tzinfo=timezone.utc)
+                        iso_date_full = utc_date.strftime('%Y-%m-%dT%H:%M:%S+00:00')
+                        print(f"    Extracted and formatted date (fallback): {iso_date_full}")
+                        return iso_date_full
+                    except ValueError:
+                        print(f"    Warning: Could not parse fallback date string: '{match.group(1)}'")
+                        return None
+            print("    Warning: <time class='nh-mr-date'> tag not found and no fallback date extracted.")
             return None
     except Exception as e:
         print(f"    Error during date extraction from HTML: {e}")
@@ -173,7 +192,7 @@ def setup_driver():
     options.add_argument('--log-level=3')
     options.add_experimental_option('excludeSwitches', ['enable-logging'])
     try:
-        service = ChromeService()
+        service = ChromeService() # Assumes chromedriver is in PATH
         driver = webdriver.Chrome(service=service, options=options)
         driver.set_page_load_timeout(60)
         print("WebDriver initialized successfully (Headless Mode). Page load timeout set to 60s.")
@@ -206,9 +225,9 @@ def fetch_and_check_article_content_selenium(driver, article_url, keywords):
 
         page_source = driver.page_source
 
-        extracted_iso_date = extract_and_format_date(page_source)
+        extracted_iso_date = extract_and_format_date(page_source) # Ensures YYYY-MM-DDTHH:MM:SS+00:00
         if not extracted_iso_date:
-             print(f"    Warning: Could not extract publication date using <time> tag.")
+             print(f"    Warning: Could not extract publication date using primary or fallback methods.")
 
         print(f"    Processing text with newspaper3k...")
         article = NewspaperArticle(article_url, language='en')
@@ -218,7 +237,7 @@ def fetch_and_check_article_content_selenium(driver, article_url, keywords):
 
         if not article_text:
              print(f"    Warning: newspaper3k could not extract main text from {article_url}. Keyword check might be incomplete.")
-             article_text = ""
+             article_text = "" # Ensure article_text is a string for find_matching_keywords
 
         print(f"    Extracted {len(article_text)} characters using newspaper3k for keyword check.")
 
@@ -234,7 +253,7 @@ def fetch_and_check_article_content_selenium(driver, article_url, keywords):
         return ([], None)
     except ArticleException as e:
          print(f"  Error: newspaper3k failed to process article {article_url}: {e}")
-         return ([], extracted_iso_date) # Return date if found before newspaper error
+         return ([], extracted_iso_date)
     except WebDriverException as e:
         print(f"  Error navigating to or processing {article_url}: {e}")
         return ([], None)
@@ -244,63 +263,67 @@ def fetch_and_check_article_content_selenium(driver, article_url, keywords):
 
 # --- Main Script ---
 
-print(f"--- Starting ASIC Article Scraper (Selenium - ISO Date Format) ---") # Updated title
+print(f"--- Starting ASIC Article Scraper (Selenium - ISO Date Format UTC) ---")
 
-# 1. Load Keywords
 keywords_to_check = load_keywords(KEYWORDS_TXT)
 if not keywords_to_check:
      print("Proceeding without keyword filtering as no keywords were loaded.")
 
-# 2. Load Previously Checked URLs
 checked_urls = load_checked_urls(CHECKED_URLS_FILE)
-
-# 3. Setup Selenium WebDriver
 driver = setup_driver()
 if not driver:
     print("--- Script Finished (WebDriver Setup Error) ---")
     exit()
 
 urls_to_process = set()
-articles_to_add = [] # List to store dicts for matched articles before sorting
+articles_to_add = []
 
 try:
-    # 4. Fetch Main Media Releases Page using Selenium
     print(f"Fetching main list from {MEDIA_RELEASES_URL}...")
     driver.get(MEDIA_RELEASES_URL)
-
     print(f"Pausing for {MAIN_PAGE_LOAD_WAIT} seconds for page to potentially finish rendering...")
     time.sleep(MAIN_PAGE_LOAD_WAIT)
 
-    # 5. Get page source and find all relevant links
     print("Extracting links from main page source...")
     page_source = driver.page_source
-    soup = BeautifulSoup(page_source, 'html.parser') # Use BS for link finding
-
+    soup = BeautifulSoup(page_source, 'html.parser')
     all_links = soup.find_all('a', href=True)
     print(f"Found {len(all_links)} total links on the page.")
 
-    # 6. Filter links
-    print(f"Filtering links for 'news-centre', year >= {MIN_YEAR_YY}, and not previously checked...")
+    print(f"Filtering links for 'news-centre', year >= 20{MIN_YEAR_YY}, and not previously checked...")
     skipped_year_count = 0
     skipped_checked_count = 0
     skipped_other_count = 0
+
+    current_year_full = datetime.now().year # e.g., 2025
+    min_year_full = 2000 + MIN_YEAR_YY # e.g., 2025
+
     for link in all_links:
         href = link['href']
         try:
             full_url = urljoin(BASE_URL, href)
-            if "news-centre" not in full_url or not full_url.endswith('/'):
+            if "news-centre" not in full_url or not full_url.endswith('/'): # ASIC URLs often end with /
                 skipped_other_count += 1
                 continue
             if full_url in checked_urls:
                 skipped_checked_count += 1
                 continue
-            year_match = re.search(r'/(\d{2})-\d{3}mr', full_url, re.IGNORECASE)
-            if not year_match or int(year_match.group(1)) < MIN_YEAR_YY:
-                 skipped_year_count += 1
-                 if year_match and int(year_match.group(1)) < MIN_YEAR_YY:
-                      save_checked_url(CHECKED_URLS_FILE, full_url)
-                      checked_urls.add(full_url)
-                 continue
+
+            # Year check based on URL pattern
+            year_match_in_url = re.search(r'/(\d{2})-\d{3}mr', full_url, re.IGNORECASE)
+            if year_match_in_url:
+                year_yy_from_url = int(year_match_in_url.group(1))
+                if year_yy_from_url < MIN_YEAR_YY: # Compare two-digit years
+                    skipped_year_count += 1
+                    save_checked_url(CHECKED_URLS_FILE, full_url) # Mark old ones as checked
+                    checked_urls.add(full_url)
+                    continue
+            else:
+                # If no year pattern in URL, we might skip or try to infer differently.
+                # For now, if it doesn't match ASIC's typical MR URL, skip.
+                skipped_other_count +=1
+                continue
+
             urls_to_process.add(full_url)
         except Exception as e:
             print(f"Warning: Error processing link href '{href}': {e}")
@@ -308,70 +331,59 @@ try:
             continue
 
     print(f"Filtering complete. Skipped: {skipped_year_count} (wrong year), {skipped_checked_count} (already checked), {skipped_other_count} (other reasons).")
-    print(f"Identified {len(urls_to_process)} unique, relevant (>= {MIN_YEAR_YY}), and unchecked article URLs to process.")
+    print(f"Identified {len(urls_to_process)} unique, relevant (>= 20{MIN_YEAR_YY}), and unchecked article URLs to process.")
 
 
-    # 7. Fetch and Check Full Content of Potential New Articles using Selenium
     if urls_to_process:
         print("Fetching and checking content of relevant URLs...")
         processed_count = 0
+        # Sort URLs by the extracted year and article number for chronological processing
         urls_to_process_list = sorted(list(urls_to_process), key=extract_sort_key_from_url)
 
         for url in urls_to_process_list:
             processed_count += 1
             print(f"Processing URL {processed_count}/{len(urls_to_process_list)}...")
 
-            # Check content, get keywords AND date
             found_keywords_list, article_date_iso_full = fetch_and_check_article_content_selenium(driver, url, keywords_to_check)
 
-            # Add to list if keywords were found (date can be None/empty initially)
             if found_keywords_list:
                 title_content = ", ".join(sorted(found_keywords_list))
-                # --- Use extracted date if available, otherwise use CURRENT date (formatted) ---
-                if article_date_iso_full:
+                if article_date_iso_full: # This is already YYYY-MM-DDTHH:MM:SS+00:00
                     date_to_save = article_date_iso_full
                 else:
-                    # Get current UTC time and format as YYYY-MM-DDTHH:MM:SS+00:00
-                    # Note: Using timezone.utc ensures the offset is +00:00
-                    current_ts_iso_full = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S+00:00')
-                    date_to_save = current_ts_iso_full
-                    print(f"    -> Using current timestamp as fallback date: {date_to_save}")
-                # --- End Date Fallback Logic ---
+                    # Fallback to current UTC time if date extraction failed
+                    current_utc_dt = datetime.now(timezone.utc)
+                    date_to_save = current_utc_dt.strftime('%Y-%m-%dT%H:%M:%S+00:00')
+                    print(f"    -> Using current UTC timestamp as fallback date: {date_to_save}")
 
                 articles_to_add.append({
-                    'date': date_to_save, # Use extracted date or current timestamp
+                    'date': date_to_save,
                     'source': SOURCE_IDENTIFIER,
                     'url': url,
-                    'title': title_content,
+                    'title': title_content, # Storing keywords in title column
                     'done': ''
                 })
-
-            # Save URL to checked file *after* processing, regardless of keyword/date success
             save_checked_url(CHECKED_URLS_FILE, url)
             checked_urls.add(url)
-
         print("Finished checking individual articles.")
 
     print(f"Found {len(articles_to_add)} new articles containing keywords.")
 
-    # 8. Sort New Articles based on URL pattern (YY-NNNMR)
     if articles_to_add:
-        print("Sorting found articles by URL year and number...")
-        articles_to_add.sort(key=lambda x: extract_sort_key_from_url(x['url']))
-        print("Sorting complete.")
+        # Sorting is already implicitly handled by processing sorted URLs,
+        # but if dates were inconsistent, explicit sort by date would be needed here.
+        # articles_to_add.sort(key=lambda x: x['date']) # Ensure final sort by date string
 
-
-    # 9. Append to CSV
-    if articles_to_add:
         print(f"Appending {len(articles_to_add)} new articles to {OUTPUT_CSV}...")
         file_exists = os.path.exists(OUTPUT_CSV)
         is_empty = (not file_exists) or (os.path.getsize(OUTPUT_CSV) == 0)
 
         try:
+            # Convert to DataFrame for easier CSV writing with pandas
             new_df = pd.DataFrame(articles_to_add)
             new_df.to_csv(OUTPUT_CSV,
                           mode='a',
-                          header=is_empty,
+                          header=is_empty, # Write header only if file is new/empty
                           index=False,
                           columns=OUTPUT_COLUMNS,
                           encoding='utf-8-sig',
@@ -388,9 +400,7 @@ except TimeoutException as e:
     print(f"\nPage load timeout during script execution (likely on main list page): {e}")
 except Exception as e:
     print(f"\nAn unexpected error occurred during the main process: {e}")
-
 finally:
-    # Ensure the browser is closed even if errors occur
     if 'driver' in locals() and driver:
         print("Closing WebDriver...")
         driver.quit()
