@@ -16,6 +16,6 @@ python cointelegraph.py
 python cryptonews.py
 python decrypt.py
 python regtechglobal.py
-python telegrambotsender.py
 python dfcrc.py
 python web3au.py
+python telegrambotsender.py
