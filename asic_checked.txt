@@ -23,7 +23,6 @@ https://asic.gov.au/about-asic/news-centre/find-a-media-release/2024-releases/24
 https://asic.gov.au/about-asic/news-centre/find-a-media-release/2024-releases/24-269mr-asic-bans-south-australian-adviser-from-being-involved-in-financial-services-for-seven-years/
 https://asic.gov.au/about-asic/news-centre/find-a-media-release/2024-releases/24-268mr-asic-puts-insurers-on-notice-for-blind-spots-in-complaints-handling/
 https://asic.gov.au/about-asic/news-centre/find-a-media-release/2024-releases/24-267mr-asic-suspends-edisons-global-s-afs-licence-following-repeated-compliance-failures/
-https://asic.gov.au/about-asic/news-centre/find-a-media-release/2024-releases/24-266mr-asic-invites-feedback-on-proposed-updates-to-digital-asset-guidance/
 https://asic.gov.au/about-asic/news-centre/find-a-media-release/2024-releases/24-265mr-update-for-investors-in-the-shield-master-fund/
 https://asic.gov.au/about-asic/news-centre/find-a-media-release/2024-releases/24-264mr-asic-flags-key-observations-from-inaugural-idr-data-publication/
 https://asic.gov.au/about-asic/news-centre/find-a-media-release/2024-releases/24-263mr-asic-orders-stop-to-centrepay-credit-arrangements-offered-by-northern-territory-business/
@@ -371,3 +370,6 @@ https://asic.gov.au/about-asic/news-centre/find-a-media-release/2025-releases/25
 https://asic.gov.au/about-asic/news-centre/find-a-media-release/2025-releases/25-079mr-asic-announces-financial-reporting-and-audit-focus-areas-for-fy-2025-26/
 https://asic.gov.au/about-asic/news-centre/find-a-media-release/2025-releases/25-080mr-asic-cancels-licence-of-calaite-capital-partners-pty-ltd/
 https://asic.gov.au/about-asic/news-centre/find-a-media-release/2025-releases/25-081mr-asic-sues-home-loan-manager-resimac-alleging-failures-to-customers-facing-financial-hardship/
+https://asic.gov.au/about-asic/news-centre/find-a-media-release/2025-releases/25-083mr-former-financial-services-director-mark-mccabe-sentenced-for-fraud-offences/
+https://asic.gov.au/about-asic/news-centre/find-a-media-release/2024-releases/24-266mr-asic-invites-feedback-on-proposed-updates-to-digital-asset-guidance/
+https://asic.gov.au/about-asic/news-centre/find-a-media-release/2025-releases/25-082mr-asic-seeks-leave-from-high-court-to-appeal-block-earner-decision/
