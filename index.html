@@ -226,6 +226,18 @@
             h1 {
                 font-size: 1.8em;
             }
+            /* Ensure grouped filter items stack on mobile */
+            .filter-controls > div[style*="display: flex"] { /* Target the groupWrapper */
+                flex-direction: column;
+                gap: 10px !important; /* Adjust gap for stacking */
+            }
+            .filter-controls > div[style*="display: flex"] > input,
+            .filter-controls > div[style*="display: flex"] > .select-filter-container {
+                width: 100% !important; /* Make them full width when stacked */
+            }
+            .filter-controls > div[style*="display: flex"] > .select-filter-container > select {
+                width: 100% !important; /* Select inside also full width */
+            }
         }
     </style>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
@@ -296,8 +308,6 @@
                 originalDataset = parseCsvText(csvText);
 
                 if (originalDataset.length > 0) {
-                    // originalDataset.reverse(); // Removed: Default sort will be handled by currentSortConfig
-
                     columnHeaders = Object.keys(originalDataset[0]);
                     
                     const hasUrl = columnHeaders.some(h => h.toLowerCase() === 'url');
@@ -311,26 +321,26 @@
                             if (hasUrl && hasTitle && !articleColumnAdded) {
                                 displayHeaders.push('Article');
                                 articleColumnAdded = true;
-                            } else if (!hasUrl && lcHeader === 'url') { // Only URL exists
+                            } else if (!hasUrl && lcHeader === 'url') { 
                                 displayHeaders.push(originalHeader);
-                            } else if (!hasTitle && lcHeader === 'title') { // Only Title exists
+                            } else if (!hasTitle && lcHeader === 'title') { 
                                 displayHeaders.push(originalHeader);
                             }
                         } else if (lcHeader === 'done') {
-                            displayHeaders.push('Sent'); // Rename "done" to "Sent" for display
+                            displayHeaders.push('Sent'); 
                         }
                         else {
                             displayHeaders.push(originalHeader);
                         }
                     });
-                    if (hasUrl && hasTitle && !articleColumnAdded) { // Safety check if somehow missed
+                    if (hasUrl && hasTitle && !articleColumnAdded) { 
                          console.warn("Article column was not added despite url and title existing.");
                     }
                     
                     createTableHeaders(); 
                     createFilterInputs(); 
-                    updateHeaderSortIndicators(); // Update indicators for default sort
-                    applyFiltersAndSorting(); // Apply default sort and render
+                    updateHeaderSortIndicators(); 
+                    applyFiltersAndSorting(); 
                 } else {
                     tableBody.innerHTML = `<tr><td colspan="100%" class="message-area">No data found in the CSV file.</td></tr>`;
                     console.warn("CSV file parsed, but it appears to be empty or contain no data rows.");
@@ -407,9 +417,9 @@
                 th.textContent = headerText;
                 let dataColumn = headerText;
                 if (headerText === 'Article') {
-                    dataColumn = 'title'; // Sort 'Article' by 'title'
+                    dataColumn = 'title'; 
                 } else if (headerText === 'Sent') {
-                    dataColumn = 'done'; // Sort 'Sent' by original 'done' data
+                    dataColumn = 'done'; 
                 }
                 th.dataset.column = dataColumn; 
                 th.addEventListener('click', () => handleSortRequest(dataColumn));
@@ -418,27 +428,33 @@
         }
 
         function createFilterInputs() {
-            filterControlsContainer.innerHTML = ''; 
-            displayHeaders.forEach(headerText => { 
+            filterControlsContainer.innerHTML = '';
+            const elements = {}; // Store created elements by a unique key
+            let sourceFilterCreated = false; // To manage single global click listener for source dropdowns
+
+            // Create all filter elements first
+            displayHeaders.forEach((headerText, index) => {
                 let dataColumn = headerText;
-                 if (headerText === 'Article') {
+                let originalHeaderText = headerText;
+                if (headerText === 'Article') {
                     dataColumn = 'title';
                 } else if (headerText === 'Sent') {
                     dataColumn = 'done';
                 }
-                const placeholderText = (headerText === 'Article') ? `Filter by Article Title...` : `Filter by ${headerText}...`;
+                const placeholderText = (originalHeaderText === 'Article') ? `Filter by Article Title...` : `Filter by ${originalHeaderText}...`;
+                const elementKey = `${dataColumn}_${index}`; 
 
-                if (dataColumn.toLowerCase() === 'date') { 
+                if (dataColumn.toLowerCase() === 'date') {
                     const dateRangeContainer = document.createElement('div');
                     dateRangeContainer.className = 'date-range-filter-container';
                     
                     const fromGroup = document.createElement('div');
                     const fromLabel = document.createElement('label');
                     fromLabel.textContent = 'From:';
-                    fromLabel.htmlFor = 'dateFilterFrom'; 
+                    fromLabel.htmlFor = `dateFilterFrom_${index}`; 
                     const dateInputFrom = document.createElement('input');
                     dateInputFrom.type = 'date';
-                    dateInputFrom.id = 'dateFilterFrom'; 
+                    dateInputFrom.id = `dateFilterFrom_${index}`; 
                     dateInputFrom.value = '2025-01-01'; 
                     dateInputFrom.dataset.column = 'date'; 
                     dateInputFrom.addEventListener('input', debounce(applyFiltersAndSorting, 300));
@@ -448,25 +464,60 @@
                     const toGroup = document.createElement('div');
                     const toLabel = document.createElement('label');
                     toLabel.textContent = 'To:';
-                    toLabel.htmlFor = 'dateFilterTo'; 
+                    toLabel.htmlFor = `dateFilterTo_${index}`; 
                     const dateInputTo = document.createElement('input');
                     dateInputTo.type = 'date';
-                    dateInputTo.id = 'dateFilterTo'; 
+                    dateInputTo.id = `dateFilterTo_${index}`; 
                     dateInputTo.dataset.column = 'date'; 
                     dateInputTo.addEventListener('input', debounce(applyFiltersAndSorting, 300));
                     toGroup.appendChild(toLabel);
                     toGroup.appendChild(dateInputTo);
+                    
+                    const todayButton = document.createElement('button');
+                    todayButton.textContent = 'Today';
+                    todayButton.type = 'button';
+                    todayButton.style.padding = '8px 12px';
+                    todayButton.style.height = '40px';
+                    todayButton.style.marginLeft = '8px';
+                    todayButton.style.border = '1px solid #ced4da';
+                    todayButton.style.borderRadius = '6px';
+                    todayButton.style.backgroundColor = '#f8f9fa'; // Light background, consistent with overall page
+                    todayButton.style.cursor = 'pointer';
+                    todayButton.style.fontSize = 'inherit';
+                    todayButton.style.lineHeight = 'normal'; // Ensure text is centered well
+
+                    todayButton.addEventListener('click', () => {
+                        const now = new Date();
+                        const year = now.getFullYear();
+                        const month = String(now.getMonth() + 1).padStart(2, '0');
+                        const day = String(now.getDate()).padStart(2, '0');
+                        const todayString = `${year}-${month}-${day}`;
+                        dateInputFrom.value = todayString; 
+                        dateInputTo.value = todayString;   
+                        applyFiltersAndSorting();
+                    });
+                     todayButton.addEventListener('focus', () => {
+                        todayButton.style.borderColor = '#80bdff';
+                        todayButton.style.outline = '0';
+                        todayButton.style.boxShadow = '0 0 0 0.2rem rgba(0, 123, 255, 0.25)';
+                    });
+                    todayButton.addEventListener('blur', () => {
+                        todayButton.style.borderColor = '#ced4da';
+                        todayButton.style.boxShadow = 'none';
+                    });
+                    toGroup.appendChild(todayButton);
 
                     dateRangeContainer.appendChild(fromGroup);
                     dateRangeContainer.appendChild(toGroup);
-                    filterControlsContainer.appendChild(dateRangeContainer);
-                } else if (dataColumn.toLowerCase() === 'done') { // Corresponds to "Sent" display header
+                    elements[elementKey] = dateRangeContainer;
+
+                } else if (dataColumn.toLowerCase() === 'done') {
                     const selectContainer = document.createElement('div');
                     selectContainer.className = 'select-filter-container';
                     
                     const select = document.createElement('select');
-                    select.id = 'sentFilterSelect';
-                    select.dataset.column = 'done'; // Filter based on 'done' data
+                    select.id = `sentFilterSelect_${index}`;
+                    select.dataset.column = 'done';
                     select.addEventListener('change', applyFiltersAndSorting);
 
                     const optionAll = document.createElement('option');
@@ -485,10 +536,11 @@
                     optionUnsent.textContent = 'Unsent';
                     select.appendChild(optionUnsent);
                     
-                    selectContainer.appendChild(select); // No separate label, using select itself
-                    filterControlsContainer.appendChild(selectContainer);
+                    selectContainer.appendChild(select);
+                    elements[elementKey] = selectContainer;
 
                 } else if (dataColumn.toLowerCase() === 'source') {
+                    sourceFilterCreated = true;
                     const dropdownContainer = document.createElement('div');
                     dropdownContainer.className = 'custom-dropdown-container';
 
@@ -496,11 +548,11 @@
                     button.type = 'button';
                     button.className = 'custom-dropdown-button';
                     button.textContent = 'Filter by Source'; 
-                    button.id = 'sourceFilterButton';
+                    button.id = `sourceFilterButton_${index}`;
                     
                     const panel = document.createElement('div');
                     panel.className = 'custom-dropdown-panel';
-                    panel.id = 'sourceFilterPanel';
+                    panel.id = `sourceFilterPanel_${index}`;
 
                     const uniqueSources = [...new Set(originalDataset.map(item => item['source']).filter(Boolean))].sort();
                     uniqueSources.forEach(sourceValue => {
@@ -508,7 +560,7 @@
                         const checkbox = document.createElement('input');
                         checkbox.type = 'checkbox';
                         checkbox.value = sourceValue;
-                        checkbox.id = `source-checkbox-${sourceValue.replace(/\W/g, '_')}`; 
+                        checkbox.id = `source-checkbox-${sourceValue.replace(/\W/g, '_')}_${index}`; 
                         checkbox.dataset.column = 'source';
                         checkbox.addEventListener('change', applyFiltersAndSorting);
                         
@@ -523,32 +575,103 @@
 
                     button.addEventListener('click', (event) => {
                         event.stopPropagation(); 
-                        panel.classList.toggle('show');
+                        const currentPanelIsShown = panel.classList.contains('show');
+                        // Close all other panels first
+                        document.querySelectorAll('.custom-dropdown-panel.show').forEach(otherPanel => {
+                           if(otherPanel !== panel) otherPanel.classList.remove('show');
+                        });
+                        // Then toggle the current panel
+                        if (!currentPanelIsShown) {
+                            panel.classList.add('show');
+                        } else {
+                            panel.classList.remove('show');
+                        }
                     });
 
                     dropdownContainer.appendChild(button);
                     dropdownContainer.appendChild(panel);
-                    filterControlsContainer.appendChild(dropdownContainer);
+                    elements[elementKey] = dropdownContainer;
 
-                } else {
+                } else { 
                     const input = document.createElement('input');
                     input.type = 'text';
                     input.placeholder = placeholderText;
                     input.dataset.column = dataColumn; 
                     input.addEventListener('input', debounce(applyFiltersAndSorting, 300));
-                    filterControlsContainer.appendChild(input);
+                    elements[elementKey] = input;
+                }
+            });
+            
+            if (sourceFilterCreated) {
+                document.addEventListener('click', function(event) {
+                    document.querySelectorAll('.custom-dropdown-panel.show').forEach(panel => {
+                        const panelId = panel.id;
+                        const buttonId = panelId.replace('Panel', 'Button');
+                        const button = document.getElementById(buttonId);
+                        // Check if the click is outside the button and its panel
+                        if (button && !button.contains(event.target) && !panel.contains(event.target)) {
+                            panel.classList.remove('show');
+                        }
+                    });
+                });
+            }
+
+            let articleTitleKey = null;
+            let sentKey = null;
+            displayHeaders.forEach((headerText, index) => {
+                const lcHeaderText = headerText.toLowerCase();
+                if (lcHeaderText === 'article') articleTitleKey = `title_${index}`;
+                if (lcHeaderText === 'sent') sentKey = `done_${index}`;
+            });
+
+            const articleTitleElement = articleTitleKey ? elements[articleTitleKey] : null;
+            const sentElement = sentKey ? elements[sentKey] : null;
+
+            const appendedKeys = new Set();
+
+            displayHeaders.forEach((headerText, index) => {
+                let dataColumn = headerText;
+                if (headerText === 'Article') dataColumn = 'title';
+                else if (headerText === 'Sent') dataColumn = 'done';
+                const currentElementKey = `${dataColumn}_${index}`;
+
+                if (appendedKeys.has(currentElementKey)) return;
+
+                if (currentElementKey === articleTitleKey && articleTitleElement && sentElement) {
+                    const groupWrapper = document.createElement('div');
+                    groupWrapper.style.display = 'flex';
+                    groupWrapper.style.gap = '15px'; 
+                    groupWrapper.style.alignItems = 'center'; 
+
+                    articleTitleElement.style.flexGrow = '1'; 
+                    
+                    const sentSelectActual = sentElement.querySelector('select');
+                    if (sentSelectActual) {
+                        sentSelectActual.style.width = '160px'; 
+                    }
+                    sentElement.style.flexGrow = '0';
+                    sentElement.style.flexShrink = '0';
+
+                    groupWrapper.appendChild(articleTitleElement);
+                    groupWrapper.appendChild(sentElement);
+                    filterControlsContainer.appendChild(groupWrapper);
+                    appendedKeys.add(articleTitleKey);
+                    appendedKeys.add(sentKey); 
+                } else if (elements[currentElementKey]) {
+                    const elementToAppend = elements[currentElementKey];
+                    if (currentElementKey === sentKey) { 
+                        elementToAppend.style.justifySelf = 'end'; 
+                        const sentSelectActual = elementToAppend.querySelector('select');
+                        if (sentSelectActual) {
+                            sentSelectActual.style.width = '160px'; 
+                        }
+                    }
+                    filterControlsContainer.appendChild(elementToAppend);
+                    appendedKeys.add(currentElementKey);
                 }
             });
         }
         
-        document.addEventListener('click', function(event) {
-            const sourcePanel = document.getElementById('sourceFilterPanel');
-            const sourceButton = document.getElementById('sourceFilterButton');
-            if (sourcePanel && sourceButton && !sourceButton.contains(event.target) && !sourcePanel.contains(event.target)) {
-                sourcePanel.classList.remove('show');
-            }
-        });
-
 
         function formatDate(dateInput) {
             try {
@@ -571,15 +694,10 @@
             noResultsMessage.style.display = dataToRender.length === 0 && displayHeaders.length > 0 ? 'block' : 'none';
 
             if (dataToRender.length === 0 && displayHeaders.length > 0) {
-                const tr = tableBody.insertRow();
-                const td = tr.insertCell();
-                td.colSpan = displayHeaders.length; 
-                td.className = 'message-area';
-                td.textContent = 'No matching records found.';
                 return;
             }
             if (displayHeaders.length === 0 && dataToRender.length > 0){
-                 console.warn("Attempting to render rows but no display headers are defined. Check CSV parsing and header generation.");
+                 console.warn("Attempting to render rows but no display headers are defined.");
                  const tr = tableBody.insertRow();
                  const td = tr.insertCell();
                  td.className = 'message-area';
@@ -592,10 +710,10 @@
                 const tr = document.createElement('tr');
                 displayHeaders.forEach(headerText => { 
                     const td = document.createElement('td');
-                    if (headerText === 'Article') {
+                    let originalDataKey = columnHeaders.find(ch => ch.toLowerCase() === headerText.toLowerCase());
+                     if (headerText === 'Article') { // Special handling for combined 'Article' column
                         const urlValue = row['url'] || ''; 
                         const titleValue = row['title'] || 'View Article'; 
-
                         if (urlValue) {
                             try {
                                 const urlObject = new URL(urlValue.startsWith('http://') || urlValue.startsWith('https://') ? urlValue : `http://${urlValue}`);
@@ -607,21 +725,21 @@
                                 td.appendChild(a);
                             } catch (e) {
                                 td.textContent = `${titleValue} (Invalid URL)`;
-                                console.warn(`Invalid URL for article "${titleValue}": ${urlValue}`);
                             }
                         } else {
                             td.textContent = titleValue; 
                         }
-                    } else if (headerText === 'Sent') { // Display data from 'done' field for 'Sent' column
+                    } else if (headerText === 'Sent') { 
                         td.textContent = row['done'] !== undefined ? row['done'] : '';
-                    }
-                    else { 
-                        let cellValue = row[headerText] !== undefined ? row[headerText] : '';
-                        if (headerText.toLowerCase() === 'date' && cellValue) {
+                    } else if (originalDataKey) { // Use original key if found
+                        let cellValue = row[originalDataKey] !== undefined ? row[originalDataKey] : '';
+                        if (originalDataKey.toLowerCase() === 'date' && cellValue) {
                             td.textContent = formatDate(cellValue);
                         } else {
                             td.textContent = cellValue;
                         }
+                    } else { // Fallback if originalDataKey not found (e.g. headerText doesn't match any raw header)
+                         td.textContent = row[headerText] !== undefined ? row[headerText] : '';
                     }
                     tr.appendChild(td);
                 });
@@ -652,38 +770,40 @@
         function applyFiltersAndSorting() {
             let dataView = [...originalDataset];
 
-            // Date Range Filter
-            const dateFromInput = document.getElementById('dateFilterFrom');
-            const dateToInput = document.getElementById('dateFilterTo');
-            const dateFromValue = dateFromInput ? dateFromInput.value : null;
-            const dateToValue = dateToInput ? dateToInput.value : null;
-            
-            let filterFromDate = null;
-            if (dateFromValue) {
-                const parts = dateFromValue.split('-'); 
-                filterFromDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]), 0, 0, 0, 0);
-            }
-            let filterToDate = null;
-            if (dateToValue) {
-                const parts = dateToValue.split('-');
-                filterToDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]), 23, 59, 59, 999);
+            const dateFiltersFrom = document.querySelectorAll('input[type="date"][id^="dateFilterFrom_"]');
+            const dateFiltersTo = document.querySelectorAll('input[type="date"][id^="dateFilterTo_"]');
+
+            if (dateFiltersFrom.length > 0 && dateFiltersTo.length > 0) { // Assuming one primary date filter for now
+                const dateFromValue = dateFiltersFrom[0].value;
+                const dateToValue = dateFiltersTo[0].value;
+                
+                let filterFromDate = null;
+                if (dateFromValue) {
+                    const parts = dateFromValue.split('-'); 
+                    filterFromDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]), 0, 0, 0, 0);
+                }
+                let filterToDate = null;
+                if (dateToValue) {
+                    const parts = dateToValue.split('-');
+                    filterToDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]), 23, 59, 59, 999);
+                }
+
+                if (filterFromDate || filterToDate) {
+                    dataView = dataView.filter(row => {
+                        const rowDateValue = row['date']; 
+                        if (!rowDateValue) return false; 
+                        try {
+                            const rowDateObj = new Date(rowDateValue); 
+                            if (isNaN(rowDateObj.getTime())) return false; 
+                            if (filterFromDate && rowDateObj < filterFromDate) return false;
+                            if (filterToDate && rowDateObj > filterToDate) return false;
+                            return true;
+                        } catch (e) { return false;}
+                    });
+                }
             }
 
-            if (filterFromDate || filterToDate) {
-                dataView = dataView.filter(row => {
-                    const rowDateValue = row['date']; 
-                    if (!rowDateValue) return false; 
-                    const rowDateObj = new Date(rowDateValue); 
-                    if (isNaN(rowDateObj.getTime())) return false; 
-
-                    if (filterFromDate && rowDateObj < filterFromDate) return false;
-                    if (filterToDate && rowDateObj > filterToDate) return false;
-                    return true;
-                });
-            }
-
-            // "Sent" Dropdown Filter (replaces "Done" Checkbox)
-            const sentFilter = document.getElementById('sentFilterSelect');
+            const sentFilter = document.querySelector('select[id^="sentFilterSelect_"]');
             if (sentFilter) {
                 const selectedSentStatus = sentFilter.value;
                 if (selectedSentStatus === 'sent') {
@@ -691,12 +811,9 @@
                 } else if (selectedSentStatus === 'unsent') {
                     dataView = dataView.filter(row => (row['done'] || '').trim() === '');
                 }
-                // If 'all', no filtering is applied for this criteria
             }
 
-
-            // "Source" Multi-select Checkbox Filter
-            const sourcePanel = document.getElementById('sourceFilterPanel');
+            const sourcePanel = document.querySelector('.custom-dropdown-panel[id^="sourceFilterPanel_"]');
             if (sourcePanel) {
                 const selectedSources = [];
                 sourcePanel.querySelectorAll('input[type="checkbox"]:checked').forEach(checkbox => {
@@ -707,10 +824,8 @@
                 }
             }
 
-
-            // Text Filters (for other columns, including 'Article' which filters by 'title')
             const activeTextFilters = {};
-            filterControlsContainer.querySelectorAll('input[type="text"]').forEach(input => {
+            filterControlsContainer.querySelectorAll('input[type="text"][data-column], .filter-controls > div > input[type="text"][data-column]').forEach(input => {
                 if (input.value.trim() !== '') {
                     activeTextFilters[input.dataset.column] = input.value.trim().toLowerCase();
                 }
@@ -725,29 +840,28 @@
                 });
             }
 
-            // Apply sorting
             if (currentSortConfig.column) {
                 const sortColumnKey = currentSortConfig.column; 
                 
                 dataView.sort((a, b) => {
-                    let valA = a[sortColumnKey] || '';
-                    let valB = b[sortColumnKey] || '';
+                    let valA = a[sortColumnKey] === undefined ? '' : a[sortColumnKey];
+                    let valB = b[sortColumnKey] === undefined ? '' : b[sortColumnKey];
 
-                    if (sortColumnKey.toLowerCase() === 'date' || sortColumnKey.toLowerCase() === 'done') { // 'done' for 'Sent' column
-                        // For 'done' column, treat '+' as greater than empty for sorting
-                        if (sortColumnKey.toLowerCase() === 'done') {
-                            valA = (valA.trim() === '+') ? 1 : 0;
-                            valB = (valB.trim() === '+') ? 1 : 0;
-                        } else { // Date column
-                            valA = new Date(valA); 
-                            valB = new Date(valB); 
-                            if (isNaN(valA.getTime())) valA = new Date(0); 
-                            if (isNaN(valB.getTime())) valB = new Date(0);
-                        }
+                    if (sortColumnKey.toLowerCase() === 'date') { 
+                        valA = valA ? new Date(valA) : new Date(0); 
+                        valB = valB ? new Date(valB) : new Date(0); 
+                        if (isNaN(valA.getTime())) valA = new Date(0); 
+                        if (isNaN(valB.getTime())) valB = new Date(0);
+                    } else if (sortColumnKey.toLowerCase() === 'done') { 
+                        valA = (String(valA).trim() === '+') ? 1 : 0;
+                        valB = (String(valB).trim() === '+') ? 1 : 0;
                     } else { 
-                        const numA = parseFloat(valA);
-                        const numB = parseFloat(valB);
-                        if (!isNaN(numA) && !isNaN(numB) && String(valA).trim() !== '' && String(valB).trim() !== '') {
+                        const strValA = String(valA).trim();
+                        const strValB = String(valB).trim();
+                        const numA = parseFloat(strValA);
+                        const numB = parseFloat(strValB);
+
+                        if (strValA !== '' && strValB !== '' && !isNaN(numA) && !isNaN(numB) && strValA === String(numA) && strValB === String(numB) ) {
                             valA = numA;
                             valB = numB;
                         } else {
