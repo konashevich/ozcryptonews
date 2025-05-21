@@ -19,3 +19,4 @@ python regtechglobal.py
 python dfcrc.py
 python web3au.py
 python telegrambotsender.py
+commit_and_push_articles.py
