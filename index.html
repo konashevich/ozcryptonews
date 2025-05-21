@@ -5,10 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CSV Data Table</title>
     <link rel="apple-touch-icon" sizes="180x180" href="favicons/apple-touch-icon.png">
-<link rel="icon" type="image/png" sizes="32x32" href="favicons/favicon-32x32.png">
-<link rel="icon" type="image/png" sizes="16x16" href="favicons/favicon-16x16.png">
-<link rel="manifest" href="favicons/site.webmanifest">
-<link rel="shortcut icon" href="favicons/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="favicons/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="favicons/favicon-16x16.png">
+    <link rel="manifest" href="favicons/site.webmanifest">
+    <link rel="shortcut icon" href="favicons/favicon.ico">
     <style>
         body {
             font-family: 'Inter', sans-serif; /* Modern font */
@@ -206,6 +206,34 @@
             color: #6c757d; 
         }
 
+        /* Style for the "Today" button */
+        .today-filter-button {
+            padding: 8px 12px;
+            height: 40px;
+            margin-left: 8px;
+            border: 1px solid #ced4da;
+            border-radius: 6px;
+            background-color: #f8f9fa; /* Default background */
+            color: #343a40; /* Default text color */
+            cursor: pointer;
+            font-size: inherit;
+            line-height: normal; /* Ensures text is vertically centered */
+            transition: background-color 0.15s ease-in-out, color 0.15s ease-in-out, border-color 0.15s ease-in-out;
+        }
+
+        .today-filter-button:focus {
+            border-color: #80bdff;
+            outline: 0;
+            box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+        }
+
+        .today-filter-button.active { /* "Held" state for Today button */
+            background-color: #007bff; /* Active background - same as table header */
+            color: white; /* Active text color */
+            border-color: #0056b3; /* Darker border for active state */
+        }
+
+
         @media (max-width: 768px) {
             .container {
                 padding: 15px; 
@@ -247,11 +275,11 @@
     <div class="container">
         <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 10px; justify-content: space-between;">
             <div style="display: flex; align-items: center; gap: 16px;">
-                <img src="logo.png" alt="Logo" style="height: 48px; width: 48px; object-fit: contain;">
-                <h1 style="margin: 0;">All WEB3 New of Australia - Aggregator</h1>
+                <img src="logo.png" alt="Logo" style="height: 120px; width: 120px; object-fit: contain; border-radius: 4px;" onerror="this.style.display='none'">
+                <h1 style="margin: 0;">All WEB3 News Australia Aggregator</h1>
             </div>
             <a href="https://t.me/ozcrytponews" target="_blank" rel="noopener noreferrer" style="font-size: 1.1em; color: #007bff; text-decoration: none; font-weight: 500; display: flex; align-items: center; gap: 8px;">
-                <img src="256px-Telegram_logo.svg.png" alt="Telegram" style="height: 28px; width: 28px; object-fit: contain; vertical-align: middle;">
+                <img src="256px-Telegram_logo.svg.png" alt="Telegram" style="height: 28px; width: 28px; object-fit: contain; vertical-align: middle;" onerror="this.style.display='none'">
                 @ozcryptonews
             </a>
         </div>
@@ -275,9 +303,9 @@
     <footer style="text-align: center; padding: 12px; background-color: #f1f1f1;">
         &copy; 2025 <a href="http://oleksii.konashevych.com" target="_blank">oleksii.konashevych.com</a>
         <br />
-        Feebacks: <a href="https://t.me/oleksiiko" target="_blank">
-            <img src="256px-Telegram_logo.svg.png" alt="Telegram" style="height: 28px; width: 28px; vertical-align: middle; margin-right: 4px;">
-            @olkesiiko
+        Feedbacks: <a href="https://t.me/oleksiiko" target="_blank" style="display: inline-flex; align-items: center; gap: 4px;">
+            <img src="256px-Telegram_logo.svg.png" alt="Telegram" style="height: 24px; width: 24px; vertical-align: middle;" onerror="this.style.display='none'">
+            @oleksiiko
         </a>
     </footer>
 
@@ -308,80 +336,96 @@
                 originalDataset = parseCsvText(csvText);
 
                 if (originalDataset.length > 0) {
+                    // Extract original column headers from the first data row
                     columnHeaders = Object.keys(originalDataset[0]);
                     
+                    // Determine if 'url' and 'title' columns exist for creating a combined 'Article' column
                     const hasUrl = columnHeaders.some(h => h.toLowerCase() === 'url');
                     const hasTitle = columnHeaders.some(h => h.toLowerCase() === 'title');
 
+                    // Prepare display headers (what the user sees in the table)
                     displayHeaders = [];
-                    let articleColumnAdded = false;
+                    let articleColumnAdded = false; // Flag to ensure 'Article' is added only once
                     columnHeaders.forEach(originalHeader => {
                         const lcHeader = originalHeader.toLowerCase();
                         if (lcHeader === 'url' || lcHeader === 'title') {
+                            // If both URL and Title exist, add a combined 'Article' header
                             if (hasUrl && hasTitle && !articleColumnAdded) {
                                 displayHeaders.push('Article');
                                 articleColumnAdded = true;
-                            } else if (!hasUrl && lcHeader === 'url') { 
+                            } else if (!hasUrl && lcHeader === 'url') { // Only URL exists
                                 displayHeaders.push(originalHeader);
-                            } else if (!hasTitle && lcHeader === 'title') { 
+                            } else if (!hasTitle && lcHeader === 'title') { // Only Title exists
                                 displayHeaders.push(originalHeader);
                             }
+                            // If one exists but not the other, and 'Article' wasn't added, it implies
+                            // they will be handled as individual columns if not caught by the combined logic.
                         } else if (lcHeader === 'done') {
-                            displayHeaders.push('Sent'); 
+                            displayHeaders.push('Sent'); // Rename "done" to "Sent" for display
                         }
                         else {
-                            displayHeaders.push(originalHeader);
+                            displayHeaders.push(originalHeader); // Add other headers as they are
                         }
                     });
+                    // Safety check: if 'Article' wasn't added but both 'url' and 'title' exist, log a warning.
                     if (hasUrl && hasTitle && !articleColumnAdded) { 
-                         console.warn("Article column was not added despite url and title existing.");
+                         console.warn("Article column was not added despite url and title existing. This might happen if 'url' or 'title' were not the first of the two encountered.");
                     }
                     
                     createTableHeaders(); 
                     createFilterInputs(); 
-                    updateHeaderSortIndicators(); 
-                    applyFiltersAndSorting(); 
+                    updateHeaderSortIndicators(); // Update indicators for default sort
+                    applyFiltersAndSorting(); // Apply default sort and render
                 } else {
                     tableBody.innerHTML = `<tr><td colspan="100%" class="message-area">No data found in the CSV file.</td></tr>`;
                     console.warn("CSV file parsed, but it appears to be empty or contain no data rows.");
                 }
             } catch (error) {
                 console.error('Error during data loading or processing:', error);
+                // Ensure displayHeaders has a length for colspan, even if 1, to avoid errors.
                 tableBody.innerHTML = `<tr><td colspan="${displayHeaders.length || 1}" class="message-area">Error: ${error.message}</td></tr>`;
             }
         }
         
+        // Parses a single line of CSV text, handling quoted fields and commas within quotes.
         function parseCsvLine(lineText) {
             const fields = [];
+            // Regex to capture: 
+            // 1. Quoted fields (allowing escaped quotes "" inside)
+            // 2. Unquoted fields (anything not a comma)
+            // Followed by a comma or end of line.
             const csvRegex = /(?:"((?:[^"]|"")*)"|([^,]*))(?:,|$)/g;
             let match;
             while ((match = csvRegex.exec(lineText))) {
                 let fieldValue;
-                if (match[1] !== undefined) { 
-                    fieldValue = match[1].replace(/""/g, '"'); 
-                } else { 
+                if (match[1] !== undefined) { // Field was quoted
+                    fieldValue = match[1].replace(/""/g, '"'); // Unescape double quotes
+                } else { // Field was not quoted
                     fieldValue = match[2];
                 }
                 fields.push(fieldValue.trim());
+                // If the regex stopped at the end of the line and the last character processed was a comma,
+                // it means there's an empty field at the end.
                 if (match.index + match[0].length === lineText.length) {
                     if (match[0].endsWith(',')) {
                          fields.push('');
                     }
-                    break;
+                    break; // Reached end of line
                 }
             }
             return fields;
         }
 
+        // Parses the entire CSV text into an array of objects.
         function parseCsvText(text) {
-            const lines = text.trim().split(/\r?\n/);
-            if (lines.length < 2) {
+            const lines = text.trim().split(/\r?\n/); // Split into lines
+            if (lines.length < 2) { // Need at least a header and one data line
                 console.warn("CSV text has less than 2 lines (header + data).");
                 return [];
             }
 
-            const headerLine = lines.shift();
-            const rawHeaders = parseCsvLine(headerLine).map(h => h.trim());
+            const headerLine = lines.shift(); // First line is the header
+            const rawHeaders = parseCsvLine(headerLine).map(h => h.trim()); // Parse and trim header names
             const numColumns = rawHeaders.length;
 
             if (numColumns === 0) {
@@ -389,65 +433,76 @@
                 return [];
             }
 
+            // Map each subsequent line to an object
             return lines.map(line => {
-                if (line.trim() === '') return null; 
+                if (line.trim() === '') return null; // Skip empty lines
 
-                const values = parseCsvLine(line);
+                const values = parseCsvLine(line); // Parse values for the current line
                 const rowObject = {};
 
+                // Create object properties based on headers
                 for (let i = 0; i < numColumns; i++) {
                     rowObject[rawHeaders[i]] = (values[i] !== undefined) ? values[i] : '';
                 }
                 
+                // Handle lines with fewer columns than headers by filling missing values with empty strings
                 if (values.length !== numColumns) {
                     console.warn(`CSV line parsed with ${values.length} fields, but expected ${numColumns} based on headers. Line: "${line}"`);
                     for (let i = values.length; i < numColumns; i++) {
-                        rowObject[rawHeaders[i]] = '';
+                        rowObject[rawHeaders[i]] = ''; // Ensure all header keys exist
                     }
                 }
                 return rowObject;
-            }).filter(row => row !== null); 
+            }).filter(row => row !== null); // Remove any nulls from skipped empty lines
         }
 
 
+        // Creates table header (<th>) elements based on displayHeaders.
         function createTableHeaders() {
-            headerRow.innerHTML = ''; 
+            headerRow.innerHTML = ''; // Clear existing headers
             displayHeaders.forEach(headerText => { 
                 const th = document.createElement('th');
                 th.textContent = headerText;
+                // Determine the actual data column key for sorting
+                // 'Article' display header sorts by 'title' data
+                // 'Sent' display header sorts by 'done' data
                 let dataColumn = headerText;
                 if (headerText === 'Article') {
                     dataColumn = 'title'; 
                 } else if (headerText === 'Sent') {
                     dataColumn = 'done'; 
                 }
-                th.dataset.column = dataColumn; 
+                th.dataset.column = dataColumn; // Store data column key for sorting
                 th.addEventListener('click', () => handleSortRequest(dataColumn));
                 headerRow.appendChild(th);
             });
         }
 
+        // Creates filter input controls based on displayHeaders.
         function createFilterInputs() {
-            filterControlsContainer.innerHTML = '';
-            const elements = {}; // Store created elements by a unique key
-            let sourceFilterCreated = false; // To manage single global click listener for source dropdowns
+            filterControlsContainer.innerHTML = ''; // Clear existing filters
+            const elements = {}; // Store created filter elements to manage layout later
+            let sourceFilterCreated = false; // Flag to add global click listener for source dropdowns only once
 
-            // Create all filter elements first
+            // First pass: Create all filter elements and store them
             displayHeaders.forEach((headerText, index) => {
-                let dataColumn = headerText;
-                let originalHeaderText = headerText;
+                let dataColumn = headerText; // Default data column is the header text itself
+                let originalHeaderText = headerText; // Keep original for placeholders etc.
+                // Map display headers to actual data columns for filtering/logic
                 if (headerText === 'Article') {
-                    dataColumn = 'title';
+                    dataColumn = 'title'; // 'Article' filter operates on the 'title' data
                 } else if (headerText === 'Sent') {
-                    dataColumn = 'done';
+                    dataColumn = 'done'; // 'Sent' filter operates on the 'done' data
                 }
                 const placeholderText = (originalHeaderText === 'Article') ? `Filter by Article Title...` : `Filter by ${originalHeaderText}...`;
-                const elementKey = `${dataColumn}_${index}`; 
+                const elementKey = `${dataColumn}_${index}`; // Unique key for storing the element
 
-                if (dataColumn.toLowerCase() === 'date') {
+                if (dataColumn.toLowerCase() === 'date') { 
+                    // Create date range filter (From, To, Today button)
                     const dateRangeContainer = document.createElement('div');
                     dateRangeContainer.className = 'date-range-filter-container';
                     
+                    // "From" date input
                     const fromGroup = document.createElement('div');
                     const fromLabel = document.createElement('label');
                     fromLabel.textContent = 'From:';
@@ -455,12 +510,13 @@
                     const dateInputFrom = document.createElement('input');
                     dateInputFrom.type = 'date';
                     dateInputFrom.id = `dateFilterFrom_${index}`; 
-                    dateInputFrom.value = '2025-01-01'; 
-                    dateInputFrom.dataset.column = 'date'; 
+                    dateInputFrom.value = '2025-01-01'; // Default "From" date
+                    dateInputFrom.dataset.column = 'date'; // Data column this filter applies to
                     dateInputFrom.addEventListener('input', debounce(applyFiltersAndSorting, 300));
                     fromGroup.appendChild(fromLabel);
                     fromGroup.appendChild(dateInputFrom);
 
+                    // "To" date input
                     const toGroup = document.createElement('div');
                     const toLabel = document.createElement('label');
                     toLabel.textContent = 'To:';
@@ -473,53 +529,51 @@
                     toGroup.appendChild(toLabel);
                     toGroup.appendChild(dateInputTo);
                     
+                    // "Today" button (toggle functionality)
                     const todayButton = document.createElement('button');
                     todayButton.textContent = 'Today';
                     todayButton.type = 'button';
-                    todayButton.style.padding = '8px 12px';
-                    todayButton.style.height = '40px';
-                    todayButton.style.marginLeft = '8px';
-                    todayButton.style.border = '1px solid #ced4da';
-                    todayButton.style.borderRadius = '6px';
-                    todayButton.style.backgroundColor = '#f8f9fa'; // Light background, consistent with overall page
-                    todayButton.style.cursor = 'pointer';
-                    todayButton.style.fontSize = 'inherit';
-                    todayButton.style.lineHeight = 'normal'; // Ensure text is centered well
+                    todayButton.classList.add('today-filter-button'); // Apply CSS class for styling
+                    todayButton.dataset.isTodayActive = 'false'; // Track active state
 
                     todayButton.addEventListener('click', () => {
-                        const now = new Date();
-                        const year = now.getFullYear();
-                        const month = String(now.getMonth() + 1).padStart(2, '0');
-                        const day = String(now.getDate()).padStart(2, '0');
-                        const todayString = `${year}-${month}-${day}`;
-                        dateInputFrom.value = todayString; 
-                        dateInputTo.value = todayString;   
-                        applyFiltersAndSorting();
+                        const isActive = todayButton.dataset.isTodayActive === 'true';
+                        if (!isActive) { // If not active, set dates to today
+                            const now = new Date();
+                            const year = now.getFullYear();
+                            const month = String(now.getMonth() + 1).padStart(2, '0');
+                            const day = String(now.getDate()).padStart(2, '0');
+                            const todayString = `${year}-${month}-${day}`;
+                            dateInputFrom.value = todayString; 
+                            dateInputTo.value = todayString;   
+                            todayButton.dataset.isTodayActive = 'true';
+                            todayButton.classList.add('active');
+                            todayButton.textContent = 'Today'; // Remains "Today"
+                        } else { // If active, reset to default dates
+                            dateInputFrom.value = '2025-01-01'; 
+                            dateInputTo.value = '';   
+                            todayButton.dataset.isTodayActive = 'false';
+                            todayButton.classList.remove('active');
+                            todayButton.textContent = 'Today';
+                        }
+                        applyFiltersAndSorting(); // Re-apply filters and sorting
                     });
-                     todayButton.addEventListener('focus', () => {
-                        todayButton.style.borderColor = '#80bdff';
-                        todayButton.style.outline = '0';
-                        todayButton.style.boxShadow = '0 0 0 0.2rem rgba(0, 123, 255, 0.25)';
-                    });
-                    todayButton.addEventListener('blur', () => {
-                        todayButton.style.borderColor = '#ced4da';
-                        todayButton.style.boxShadow = 'none';
-                    });
-                    toGroup.appendChild(todayButton);
+                    toGroup.appendChild(todayButton); // Add "Today" button to the "To" date group
 
                     dateRangeContainer.appendChild(fromGroup);
                     dateRangeContainer.appendChild(toGroup);
-                    elements[elementKey] = dateRangeContainer;
+                    elements[elementKey] = dateRangeContainer; // Store the whole date range container
 
-                } else if (dataColumn.toLowerCase() === 'done') {
+                } else if (dataColumn.toLowerCase() === 'done') { // Filter for "Sent" status (uses 'done' data)
                     const selectContainer = document.createElement('div');
                     selectContainer.className = 'select-filter-container';
                     
                     const select = document.createElement('select');
                     select.id = `sentFilterSelect_${index}`;
-                    select.dataset.column = 'done';
+                    select.dataset.column = 'done'; // Filter applies to 'done' data
                     select.addEventListener('change', applyFiltersAndSorting);
 
+                    // Options for "Sent" status
                     const optionAll = document.createElement('option');
                     optionAll.value = 'all';
                     optionAll.textContent = 'Sent Status: All';
@@ -537,31 +591,34 @@
                     select.appendChild(optionUnsent);
                     
                     selectContainer.appendChild(select);
-                    elements[elementKey] = selectContainer;
+                    elements[elementKey] = selectContainer; // Store the select container
 
-                } else if (dataColumn.toLowerCase() === 'source') {
-                    sourceFilterCreated = true;
+                } else if (dataColumn.toLowerCase() === 'source') { // Filter for "Source" (multi-select dropdown)
+                    sourceFilterCreated = true; // Mark that a source filter exists
                     const dropdownContainer = document.createElement('div');
                     dropdownContainer.className = 'custom-dropdown-container';
 
+                    // Button to toggle the dropdown panel
                     const button = document.createElement('button');
                     button.type = 'button';
                     button.className = 'custom-dropdown-button';
                     button.textContent = 'Filter by Source'; 
                     button.id = `sourceFilterButton_${index}`;
                     
+                    // Panel containing checkboxes for sources
                     const panel = document.createElement('div');
                     panel.className = 'custom-dropdown-panel';
                     panel.id = `sourceFilterPanel_${index}`;
 
+                    // Get unique, sorted source values from the dataset
                     const uniqueSources = [...new Set(originalDataset.map(item => item['source']).filter(Boolean))].sort();
                     uniqueSources.forEach(sourceValue => {
-                        const itemDiv = document.createElement('div');
+                        const itemDiv = document.createElement('div'); // Container for checkbox + label
                         const checkbox = document.createElement('input');
                         checkbox.type = 'checkbox';
                         checkbox.value = sourceValue;
-                        checkbox.id = `source-checkbox-${sourceValue.replace(/\W/g, '_')}_${index}`; 
-                        checkbox.dataset.column = 'source';
+                        checkbox.id = `source-checkbox-${sourceValue.replace(/\W/g, '_')}_${index}`; // Unique ID for checkbox
+                        checkbox.dataset.column = 'source'; // Filter applies to 'source' data
                         checkbox.addEventListener('change', applyFiltersAndSorting);
                         
                         const label = document.createElement('label');
@@ -573,42 +630,40 @@
                         panel.appendChild(itemDiv);
                     });
 
+                    // Event listener for the dropdown button
                     button.addEventListener('click', (event) => {
-                        event.stopPropagation(); 
+                        event.stopPropagation(); // Prevent click from bubbling to document
                         const currentPanelIsShown = panel.classList.contains('show');
-                        // Close all other panels first
+                        // Close all other source dropdown panels first
                         document.querySelectorAll('.custom-dropdown-panel.show').forEach(otherPanel => {
                            if(otherPanel !== panel) otherPanel.classList.remove('show');
                         });
                         // Then toggle the current panel
-                        if (!currentPanelIsShown) {
-                            panel.classList.add('show');
-                        } else {
-                            panel.classList.remove('show');
-                        }
+                        panel.classList.toggle('show', !currentPanelIsShown);
                     });
 
                     dropdownContainer.appendChild(button);
                     dropdownContainer.appendChild(panel);
-                    elements[elementKey] = dropdownContainer;
+                    elements[elementKey] = dropdownContainer; // Store the dropdown container
 
-                } else { 
+                } else { // Default: text input filter for other columns
                     const input = document.createElement('input');
                     input.type = 'text';
                     input.placeholder = placeholderText;
-                    input.dataset.column = dataColumn; 
+                    input.dataset.column = dataColumn; // Filter applies to this data column
                     input.addEventListener('input', debounce(applyFiltersAndSorting, 300));
-                    elements[elementKey] = input;
+                    elements[elementKey] = input; // Store the text input
                 }
             });
             
+            // Add a single document-level click listener to close source dropdowns if a click occurs outside
             if (sourceFilterCreated) {
                 document.addEventListener('click', function(event) {
                     document.querySelectorAll('.custom-dropdown-panel.show').forEach(panel => {
                         const panelId = panel.id;
-                        const buttonId = panelId.replace('Panel', 'Button');
+                        const buttonId = panelId.replace('Panel', 'Button'); // Infer button ID from panel ID
                         const button = document.getElementById(buttonId);
-                        // Check if the click is outside the button and its panel
+                        // If click is outside the button AND outside the panel, close the panel
                         if (button && !button.contains(event.target) && !panel.contains(event.target)) {
                             panel.classList.remove('show');
                         }
@@ -616,8 +671,11 @@
                 });
             }
 
+            // Second pass: Arrange and append elements to the filterControlsContainer
+            // This allows for special grouping (e.g., Article Title + Sent Status)
             let articleTitleKey = null;
             let sentKey = null;
+            // Find keys for Article Title and Sent filters if they exist
             displayHeaders.forEach((headerText, index) => {
                 const lcHeaderText = headerText.toLowerCase();
                 if (lcHeaderText === 'article') articleTitleKey = `title_${index}`;
@@ -627,7 +685,7 @@
             const articleTitleElement = articleTitleKey ? elements[articleTitleKey] : null;
             const sentElement = sentKey ? elements[sentKey] : null;
 
-            const appendedKeys = new Set();
+            const appendedKeys = new Set(); // Track which elements have been appended to avoid duplicates
 
             displayHeaders.forEach((headerText, index) => {
                 let dataColumn = headerText;
@@ -635,35 +693,38 @@
                 else if (headerText === 'Sent') dataColumn = 'done';
                 const currentElementKey = `${dataColumn}_${index}`;
 
-                if (appendedKeys.has(currentElementKey)) return;
+                if (appendedKeys.has(currentElementKey)) return; // Skip if already appended
 
+                // Special layout: Group "Article Title" and "Sent Status" filters together
                 if (currentElementKey === articleTitleKey && articleTitleElement && sentElement) {
                     const groupWrapper = document.createElement('div');
-                    groupWrapper.style.display = 'flex';
+                    groupWrapper.style.display = 'flex'; // Use flexbox for grouping
                     groupWrapper.style.gap = '15px'; 
                     groupWrapper.style.alignItems = 'center'; 
 
-                    articleTitleElement.style.flexGrow = '1'; 
+                    articleTitleElement.style.flexGrow = '1'; // Article title input takes available space
                     
+                    // Style the "Sent Status" dropdown within the group
                     const sentSelectActual = sentElement.querySelector('select');
                     if (sentSelectActual) {
-                        sentSelectActual.style.width = '160px'; 
+                        sentSelectActual.style.width = '180px'; // Slightly wider for "Sent Status: All"
                     }
-                    sentElement.style.flexGrow = '0';
-                    sentElement.style.flexShrink = '0';
+                    sentElement.style.flexGrow = '0'; // Don't grow
+                    sentElement.style.flexShrink = '0'; // Don't shrink
 
                     groupWrapper.appendChild(articleTitleElement);
                     groupWrapper.appendChild(sentElement);
                     filterControlsContainer.appendChild(groupWrapper);
-                    appendedKeys.add(articleTitleKey);
+                    appendedKeys.add(articleTitleKey); // Mark both as appended
                     appendedKeys.add(sentKey); 
-                } else if (elements[currentElementKey]) {
+                } else if (elements[currentElementKey]) { // For other filters, append them directly
                     const elementToAppend = elements[currentElementKey];
-                    if (currentElementKey === sentKey) { 
+                    // If it's the "Sent" filter appearing alone, right-align it and set width
+                    if (currentElementKey === sentKey && !articleTitleElement) { 
                         elementToAppend.style.justifySelf = 'end'; 
                         const sentSelectActual = elementToAppend.querySelector('select');
                         if (sentSelectActual) {
-                            sentSelectActual.style.width = '160px'; 
+                            sentSelectActual.style.width = '180px'; 
                         }
                     }
                     filterControlsContainer.appendChild(elementToAppend);
@@ -673,72 +734,86 @@
         }
         
 
+        // Formats a date string (e.g., from CSV) into DD/MM/YYYY format.
         function formatDate(dateInput) {
             try {
                 const dateObj = new Date(dateInput);
-                if (isNaN(dateObj.getTime())) { 
-                    return String(dateInput); 
+                if (isNaN(dateObj.getTime())) { // If date is invalid
+                    return String(dateInput); // Return original string
                 }
                 const day = String(dateObj.getDate()).padStart(2, '0');
-                const month = String(dateObj.getMonth() + 1).padStart(2, '0'); 
+                const month = String(dateObj.getMonth() + 1).padStart(2, '0'); // Month is 0-indexed
                 const year = dateObj.getFullYear();
                 return `${day}/${month}/${year}`;
             } catch (e) {
                 console.warn(`Could not format date: ${dateInput}`, e);
-                return String(dateInput); 
+                return String(dateInput); // Fallback to original string on error
             }
         }
 
+        // Renders the table rows based on the provided data.
         function renderTableRows(dataToRender) {
-            tableBody.innerHTML = ''; 
+            tableBody.innerHTML = ''; // Clear existing rows
+            // Show "no results" message if data is empty but headers exist
             noResultsMessage.style.display = dataToRender.length === 0 && displayHeaders.length > 0 ? 'block' : 'none';
 
             if (dataToRender.length === 0 && displayHeaders.length > 0) {
+                // No need to add a row here, the noResultsMessage handles it.
                 return;
             }
+            // If headers are missing, show an error (should ideally not happen if CSV is valid)
             if (displayHeaders.length === 0 && dataToRender.length > 0){
-                 console.warn("Attempting to render rows but no display headers are defined.");
+                 console.warn("Attempting to render rows but no display headers are defined. Check CSV parsing and header generation.");
                  const tr = tableBody.insertRow();
                  const td = tr.insertCell();
                  td.className = 'message-area';
                  td.textContent = 'Could not determine table structure from CSV.';
                  return;
             }
-            if (dataToRender.length === 0) return;
+            if (dataToRender.length === 0) return; // No data to render
 
+            // Create a row (<tr>) for each item in dataToRender
             dataToRender.forEach(row => {
                 const tr = document.createElement('tr');
+                // Create a cell (<td>) for each display header
                 displayHeaders.forEach(headerText => { 
                     const td = document.createElement('td');
+                    // Find the original data key that corresponds to the display header
+                    // This is important because display headers can be renamed (e.g., 'done' -> 'Sent')
                     let originalDataKey = columnHeaders.find(ch => ch.toLowerCase() === headerText.toLowerCase());
-                     if (headerText === 'Article') { // Special handling for combined 'Article' column
+                    
+                    // Special handling for the 'Article' column (combined URL and Title)
+                    if (headerText === 'Article') {
                         const urlValue = row['url'] || ''; 
-                        const titleValue = row['title'] || 'View Article'; 
-                        if (urlValue) {
+                        const titleValue = row['title'] || 'View Article'; // Default title if none
+                        if (urlValue) { // If URL exists, create a link
                             try {
+                                // Ensure URL has a protocol, default to http if missing
                                 const urlObject = new URL(urlValue.startsWith('http://') || urlValue.startsWith('https://') ? urlValue : `http://${urlValue}`);
                                 const a = document.createElement('a');
                                 a.href = urlObject.href;
                                 a.textContent = titleValue; 
-                                a.target = '_blank';
-                                a.rel = 'noopener noreferrer';
+                                a.target = '_blank'; // Open in new tab
+                                a.rel = 'noopener noreferrer'; // Security best practice
                                 td.appendChild(a);
-                            } catch (e) {
+                            } catch (e) { // Handle invalid URLs
                                 td.textContent = `${titleValue} (Invalid URL)`;
+                                console.warn(`Invalid URL for article "${titleValue}": ${urlValue}`);
                             }
-                        } else {
+                        } else { // If no URL, just display the title
                             td.textContent = titleValue; 
                         }
-                    } else if (headerText === 'Sent') { 
+                    } else if (headerText === 'Sent') { // For 'Sent' column, use 'done' data
                         td.textContent = row['done'] !== undefined ? row['done'] : '';
-                    } else if (originalDataKey) { // Use original key if found
+                    } else if (originalDataKey) { // For other columns, use the original data key
                         let cellValue = row[originalDataKey] !== undefined ? row[originalDataKey] : '';
+                        // Format date cells
                         if (originalDataKey.toLowerCase() === 'date' && cellValue) {
                             td.textContent = formatDate(cellValue);
                         } else {
                             td.textContent = cellValue;
                         }
-                    } else { // Fallback if originalDataKey not found (e.g. headerText doesn't match any raw header)
+                    } else { // Fallback if no originalDataKey found (should be rare)
                          td.textContent = row[headerText] !== undefined ? row[headerText] : '';
                     }
                     tr.appendChild(td);
@@ -747,147 +822,177 @@
             });
         }
 
+        // Handles a request to sort the table by a specific column.
         function handleSortRequest(columnKey) { 
             if (currentSortConfig.column === columnKey) {
+                // If already sorting by this column, toggle direction
                 currentSortConfig.ascending = !currentSortConfig.ascending; 
             } else {
+                // Otherwise, sort by this column in ascending order by default
                 currentSortConfig.column = columnKey;
                 currentSortConfig.ascending = true; 
             }
-            updateHeaderSortIndicators();
-            applyFiltersAndSorting(); 
+            updateHeaderSortIndicators(); // Update visual indicators on headers
+            applyFiltersAndSorting(); // Re-apply filters and sorting
         }
 
+        // Updates the sort indicator arrows (▲/▼) on table headers.
         function updateHeaderSortIndicators() {
             headerRow.querySelectorAll('th').forEach(th => {
-                th.classList.remove('sort-asc', 'sort-desc');
+                th.classList.remove('sort-asc', 'sort-desc'); // Clear existing sort classes
+                // Add class if this header is the current sort column
                 if (th.dataset.column === currentSortConfig.column) { 
                     th.classList.add(currentSortConfig.ascending ? 'sort-asc' : 'sort-desc');
                 }
             });
         }
 
+        // Applies all active filters and the current sorting to the dataset, then re-renders the table.
         function applyFiltersAndSorting() {
-            let dataView = [...originalDataset];
+            let dataView = [...originalDataset]; // Start with a copy of the full dataset
 
+            // --- Date Range Filter ---
+            // Assumes one primary date filter set for now. If multiple date columns are filterable,
+            // this logic would need to identify which date filter inputs correspond to which date column.
             const dateFiltersFrom = document.querySelectorAll('input[type="date"][id^="dateFilterFrom_"]');
             const dateFiltersTo = document.querySelectorAll('input[type="date"][id^="dateFilterTo_"]');
 
-            if (dateFiltersFrom.length > 0 && dateFiltersTo.length > 0) { // Assuming one primary date filter for now
-                const dateFromValue = dateFiltersFrom[0].value;
-                const dateToValue = dateFiltersTo[0].value;
+            if (dateFiltersFrom.length > 0 && dateFiltersTo.length > 0) { // Check if date filter inputs exist
+                const dateFromValue = dateFiltersFrom[0].value; // Get "From" date value
+                const dateToValue = dateFiltersTo[0].value;     // Get "To" date value
                 
                 let filterFromDate = null;
-                if (dateFromValue) {
+                if (dateFromValue) { // Parse "From" date if provided
                     const parts = dateFromValue.split('-'); 
-                    filterFromDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]), 0, 0, 0, 0);
+                    filterFromDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]), 0, 0, 0, 0); // Start of day
                 }
                 let filterToDate = null;
-                if (dateToValue) {
+                if (dateToValue) { // Parse "To" date if provided
                     const parts = dateToValue.split('-');
-                    filterToDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]), 23, 59, 59, 999);
+                    filterToDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]), 23, 59, 59, 999); // End of day
                 }
 
+                // Filter data by date range if either "From" or "To" date is set
                 if (filterFromDate || filterToDate) {
                     dataView = dataView.filter(row => {
-                        const rowDateValue = row['date']; 
-                        if (!rowDateValue) return false; 
+                        const rowDateValue = row['date']; // Assuming 'date' is the column key for dates
+                        if (!rowDateValue) return false; // Skip rows with no date
                         try {
                             const rowDateObj = new Date(rowDateValue); 
-                            if (isNaN(rowDateObj.getTime())) return false; 
+                            if (isNaN(rowDateObj.getTime())) return false; // Skip invalid dates
+                            // Apply date range conditions
                             if (filterFromDate && rowDateObj < filterFromDate) return false;
                             if (filterToDate && rowDateObj > filterToDate) return false;
-                            return true;
-                        } catch (e) { return false;}
+                            return true; // Row is within the date range
+                        } catch (e) { return false;} // Skip if date parsing fails
                     });
                 }
             }
 
-            const sentFilter = document.querySelector('select[id^="sentFilterSelect_"]');
+            // --- "Sent" Status Dropdown Filter ---
+            const sentFilter = document.querySelector('select[id^="sentFilterSelect_"]'); // Find the "Sent" status select
             if (sentFilter) {
                 const selectedSentStatus = sentFilter.value;
-                if (selectedSentStatus === 'sent') {
+                if (selectedSentStatus === 'sent') { // Filter for "Sent" (+)
                     dataView = dataView.filter(row => (row['done'] || '').trim() === '+');
-                } else if (selectedSentStatus === 'unsent') {
+                } else if (selectedSentStatus === 'unsent') { // Filter for "Unsent" (empty)
                     dataView = dataView.filter(row => (row['done'] || '').trim() === '');
                 }
+                // If 'all', no filtering is applied for this criterion
             }
 
-            const sourcePanel = document.querySelector('.custom-dropdown-panel[id^="sourceFilterPanel_"]');
+            // --- "Source" Multi-select Checkbox Filter ---
+            const sourcePanel = document.querySelector('.custom-dropdown-panel[id^="sourceFilterPanel_"]'); // Find the source filter panel
             if (sourcePanel) {
                 const selectedSources = [];
+                // Get all checked source checkboxes
                 sourcePanel.querySelectorAll('input[type="checkbox"]:checked').forEach(checkbox => {
                     selectedSources.push(checkbox.value);
                 });
+                // If any sources are selected, filter by them
                 if (selectedSources.length > 0) {
                     dataView = dataView.filter(row => selectedSources.includes(row['source']));
                 }
             }
 
+            // --- Text Filters (for other columns, including 'Article' which filters by 'title') ---
             const activeTextFilters = {};
+            // Find all text input filters (direct children or inside grouped divs)
             filterControlsContainer.querySelectorAll('input[type="text"][data-column], .filter-controls > div > input[type="text"][data-column]').forEach(input => {
-                if (input.value.trim() !== '') {
+                if (input.value.trim() !== '') { // If input has a value
                     activeTextFilters[input.dataset.column] = input.value.trim().toLowerCase();
                 }
             });
 
+            // Apply text filters if any are active
             if (Object.keys(activeTextFilters).length > 0) {
                 dataView = dataView.filter(row => {
+                    // Row must match ALL active text filters
                     return Object.entries(activeTextFilters).every(([dataFieldKey, filterValue]) => {
-                        const cellValue = String(row[dataFieldKey] || '').toLowerCase();
-                        return cellValue.includes(filterValue);
+                        const cellValue = String(row[dataFieldKey] || '').toLowerCase(); // Get cell value for the field
+                        return cellValue.includes(filterValue); // Check if cell value includes filter text
                     });
                 });
             }
 
-            if (currentSortConfig.column) {
+            // --- Apply Sorting ---
+            if (currentSortConfig.column) { // If a sort column is set
                 const sortColumnKey = currentSortConfig.column; 
                 
                 dataView.sort((a, b) => {
+                    // Get values for comparison, default to empty string if undefined
                     let valA = a[sortColumnKey] === undefined ? '' : a[sortColumnKey];
                     let valB = b[sortColumnKey] === undefined ? '' : b[sortColumnKey];
 
-                    if (sortColumnKey.toLowerCase() === 'date') { 
-                        valA = valA ? new Date(valA) : new Date(0); 
+                    // Special sorting logic for specific column types
+                    if (sortColumnKey.toLowerCase() === 'date') { // Date sorting
+                        valA = valA ? new Date(valA) : new Date(0); // Convert to Date objects, default to epoch if invalid/empty
                         valB = valB ? new Date(valB) : new Date(0); 
-                        if (isNaN(valA.getTime())) valA = new Date(0); 
+                        if (isNaN(valA.getTime())) valA = new Date(0); // Handle invalid dates
                         if (isNaN(valB.getTime())) valB = new Date(0);
-                    } else if (sortColumnKey.toLowerCase() === 'done') { 
-                        valA = (String(valA).trim() === '+') ? 1 : 0;
+                    } else if (sortColumnKey.toLowerCase() === 'done') { // "Sent" status sorting ('+' is greater)
+                        valA = (String(valA).trim() === '+') ? 1 : 0; // '+' maps to 1, others to 0
                         valB = (String(valB).trim() === '+') ? 1 : 0;
-                    } else { 
+                    } else { // General alphanumeric/numeric sorting
                         const strValA = String(valA).trim();
                         const strValB = String(valB).trim();
                         const numA = parseFloat(strValA);
                         const numB = parseFloat(strValB);
 
+                        // If both values are valid numbers and their string representations match the parsed numbers
+                        // (to avoid treating "12a" as number 12), then compare as numbers.
                         if (strValA !== '' && strValB !== '' && !isNaN(numA) && !isNaN(numB) && strValA === String(numA) && strValB === String(numB) ) {
                             valA = numA;
                             valB = numB;
-                        } else {
+                        } else { // Otherwise, compare as lowercase strings
                             valA = String(valA).toLowerCase();
                             valB = String(valB).toLowerCase();
                         }
                     }
 
+                    // Comparison logic
                     if (valA < valB) return currentSortConfig.ascending ? -1 : 1;
                     if (valA > valB) return currentSortConfig.ascending ? 1 : -1;
-                    return 0;
+                    return 0; // Values are equal
                 });
             }
-            renderTableRows(dataView);
+            renderTableRows(dataView); // Re-render the table with filtered and sorted data
         }
 
+        // Debounce function to limit the rate at which a function can fire.
+        // Useful for input events to avoid excessive processing.
         function debounce(func, delay) {
             let timeoutId;
             return function(...args) {
-                clearTimeout(timeoutId);
+                clearTimeout(timeoutId); // Clear the previous timeout
+                // Set a new timeout
                 timeoutId = setTimeout(() => {
-                    func.apply(this, args);
+                    func.apply(this, args); // Call the function after the delay
                 }, delay);
             };
         }
 
+        // Initial load of data when the script runs
         loadAndProcessData();
     </script>
 
