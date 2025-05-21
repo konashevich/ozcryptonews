@@ -11,16 +11,9 @@ import csv
 import re
 from dateutil import parser as dateparser
 import datetime # Keep standard datetime
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 import unicodedata
 from datetime import timezone # Import timezone
-
-# --- Configuration ---
-PROJECT_URL = 'https://dfcrc.com.au/projects-cbdc-acacia/'
-MEDIA_RELEASES_URL = 'https://dfcrc.com.au/news/media-releases/'
-CSV_FILE = 'articles.csv'
-STOP_HEADING_TEXT = "Previous IAG Material"
-CSV_HEADERS = ['date', 'source', 'url', 'title', 'done']
 
 def clean_text(text):
     if not text: return ""
@@ -82,6 +75,17 @@ def append_to_csv(articles_list):
         print(f"Error appending to CSV: {e}")
 
 
+def get_source_path(url):
+    parsed = urlparse(url)
+    return parsed.netloc + parsed.path
+
+# --- Configuration ---
+PROJECT_URL = 'https://dfcrc.com.au/projects-cbdc-acacia/'
+MEDIA_RELEASES_URL = 'https://dfcrc.com.au/news/media-releases/'
+CSV_FILE = 'articles.csv'
+STOP_HEADING_TEXT = "Previous IAG Material"
+CSV_HEADERS = ['date', 'source', 'url', 'title', 'done']
+
 def fetch_project_updates():
     print(f"Fetching project updates from {PROJECT_URL}...")
     items_for_csv = []
@@ -95,7 +99,6 @@ def fetch_project_updates():
 
     soup = BeautifulSoup(resp.content, 'html.parser')
     all_h3_tags = soup.find_all('h3')
-    MIN_YEAR = 2025
 
     for h3_tag in all_h3_tags:
         h3_text_cleaned = clean_text(h3_tag.get_text(strip=True))
@@ -103,75 +106,51 @@ def fetch_project_updates():
             print(f"Reached stop heading: '{STOP_HEADING_TEXT}'.")
             break
 
-        # Focus on h3 tags that seem to represent meeting updates
-        if "Meeting" in h3_text_cleaned or "Update" in h3_text_cleaned: # Broader check
+        if "Meeting" in h3_text_cleaned or "Update" in h3_text_cleaned:
             current_update_title_cleaned = h3_text_cleaned
-            
-            # Date parsing from title (e.g., "Meeting 22 May 2025", "Update 22 May 2025")
-            # This is a simplified regex; might need adjustment if format varies widely
             date_match = re.search(r'(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4})', current_update_title_cleaned, re.IGNORECASE)
             raw_date_str_from_title = date_match.group(1) if date_match else None
 
             parsed_date_obj_utc = None
             if raw_date_str_from_title:
                 try:
-                    # dateparser.parse is flexible
                     parsed_dt_naive = dateparser.parse(raw_date_str_from_title)
-                    # Assume naive date is UTC for project updates, or local if known
                     parsed_date_obj_utc = parsed_dt_naive.replace(tzinfo=timezone.utc)
                 except (dateparser.ParserError, ValueError) as e_date:
                     print(f"  - Could not parse date from title '{raw_date_str_from_title}' for '{current_update_title_cleaned}'. Error: {e_date}")
-            else: # Fallback: try to find date in subsequent text if not in H3
-                # This would require more complex logic to associate text with H3
+            else:
                 print(f"  - No clear date in title for '{current_update_title_cleaned}'. Using current UTC as fallback if PDF found.")
-                # If no date found in title, but a PDF is linked, we might use current time or skip.
-                # For now, let's require a date from title for project updates.
-                # If a PDF is found but no date, it's hard to timestamp accurately.
-                # Defaulting to a placeholder or skipping might be options.
-                # Let's try to make a fallback to current time if a PDF is found.
-                if not parsed_date_obj_utc: # If still no date
-                    parsed_date_obj_utc = datetime.datetime.now(timezone.utc) # Fallback to now if PDF found later
-
-            if parsed_date_obj_utc and parsed_date_obj_utc.year < MIN_YEAR:
-                # print(f"  - Skipping old project update from {parsed_date_obj_utc.year}: {current_update_title_cleaned}")
-                continue
+                if not parsed_date_obj_utc:
+                    parsed_date_obj_utc = datetime.datetime.now(timezone.utc)
 
             pdf_link_found = None
-            # Look for PDF links in <ul> following the <h3>
             ul_sibling = h3_tag.find_next_sibling('ul')
             if ul_sibling:
                 for li in ul_sibling.find_all('li'):
                     a_tag = li.find('a', href=lambda href: href and href.lower().endswith('.pdf'))
                     if a_tag:
                         pdf_link_found = urljoin(PROJECT_URL, a_tag['href'])
-                        # Use the PDF link's text as part of title if H3 is too generic like "Update"
                         pdf_title_text = clean_text(a_tag.get_text(strip=True))
                         if "Update" == current_update_title_cleaned and pdf_title_text:
-                             current_update_title_cleaned = f"Update: {pdf_title_text}"
-                        break # Take first PDF link under this H3
+                            current_update_title_cleaned = f"Update: {pdf_title_text}"
+                        break
 
-            # Only add if we have a PDF link or a very specific title indicating an update
-            if pdf_link_found or "Meeting" in current_update_title_cleaned :
+            if pdf_link_found or "Meeting" in current_update_title_cleaned:
                 iso_date_utc_str = parsed_date_obj_utc.strftime('%Y-%m-%dT%H:%M:%S+00:00') if parsed_date_obj_utc else ""
-                
-                # Construct a meaningful title
                 csv_title = f"DFCRC Acacia: {current_update_title_cleaned}"
                 if pdf_link_found and not ("Meeting" in current_update_title_cleaned or "Update" in current_update_title_cleaned):
-                    # If title was generic and we found a PDF, try to use PDF name
                     pdf_name = os.path.basename(pdf_link_found)
                     csv_title = f"DFCRC Acacia PDF: {pdf_name}"
 
-
                 items_for_csv.append({
                     'parsed_date_obj_utc': parsed_date_obj_utc,
-                    'date': iso_date_utc_str, # ISO UTC string
-                    'source': PROJECT_URL, # Source is the project page itself
-                    'url': pdf_link_found, # URL of the PDF if found
+                    'date': iso_date_utc_str,
+                    'source': get_source_path(PROJECT_URL),
+                    'url': pdf_link_found,
                     'title': csv_title,
                     'done': ''
                 })
     return items_for_csv
-
 
 def fetch_media_releases():
     print(f"Fetching media releases from {MEDIA_RELEASES_URL}...")
@@ -185,19 +164,15 @@ def fetch_media_releases():
         return items_for_csv
 
     soup = BeautifulSoup(resp.content, 'html.parser')
-    # Assuming media releases are in elements with class "latest_post"
     latest_posts_elements = soup.find_all(class_="latest_post")
-    MIN_YEAR = 2025
 
     for post_element in latest_posts_elements:
         date_tag_element = post_element.find(class_="date entry_date updated")
-        # Title link is usually within a specific class like "latest_post_title" and is an <a> tag
-        link_tag_element = post_element.find(class_="latest_post_title", name='a') 
-        if not link_tag_element: # Fallback if title is not directly 'a' but inside another tag
+        link_tag_element = post_element.find(class_="latest_post_title", name='a')
+        if not link_tag_element:
             title_container = post_element.find(class_="latest_post_title")
             if title_container:
                 link_tag_element = title_container.find('a')
-
 
         parsed_date_obj_utc = None
         iso_date_utc_str = ""
@@ -208,25 +183,20 @@ def fetch_media_releases():
             raw_date_str = date_tag_element.get_text(strip=True)
             try:
                 parsed_dt_naive = dateparser.parse(raw_date_str)
-                # Assume naive date from media releases is UTC or convert if local TZ known
                 parsed_date_obj_utc = parsed_dt_naive.replace(tzinfo=timezone.utc)
                 iso_date_utc_str = parsed_date_obj_utc.strftime('%Y-%m-%dT%H:%M:%S+00:00')
             except (dateparser.ParserError, ValueError) as e_date:
                 print(f"  - Could not parse media release date '{raw_date_str}'. Error: {e_date}")
-        
+
         if link_tag_element and link_tag_element.has_attr('href'):
             article_url_val = urljoin(MEDIA_RELEASES_URL, link_tag_element['href'])
             article_title_cleaned = clean_text(link_tag_element.get_text(strip=True))
-        
-        if parsed_date_obj_utc and parsed_date_obj_utc.year < MIN_YEAR:
-            # print(f"  - Skipping old media release from {parsed_date_obj_utc.year}: {article_title_cleaned}")
-            continue
-            
-        if article_url_val and article_title_cleaned != "N/A" and iso_date_utc_str: # Ensure essential data is present
+
+        if article_url_val and article_title_cleaned != "N/A" and iso_date_utc_str:
             items_for_csv.append({
                 'parsed_date_obj_utc': parsed_date_obj_utc,
-                'date': iso_date_utc_str, # ISO UTC string
-                'source': MEDIA_RELEASES_URL, # Source is the media releases page
+                'date': iso_date_utc_str,
+                'source': get_source_path(MEDIA_RELEASES_URL),
                 'url': article_url_val,
                 'title': article_title_cleaned,
                 'done': ''

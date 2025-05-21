@@ -63,7 +63,7 @@ async def send_telegram_message_async(bot_token, chat_id, message_text):
         await bot_instance.send_message(
             chat_id=chat_id,
             text=message_text,
-            parse_mode='HTML', # Allows bold, italic, links
+            parse_mode='HTML',
             # Consider disable_web_page_preview=True if previews are noisy
         )
         log.info(f"Successfully sent message to chat ID {chat_id}")
@@ -151,17 +151,17 @@ async def process_csv_and_notify(bot_token, chat_id_to_notify):
             human_readable_date = format_date_for_telegram(row_dict.get('date'))
 
             message_content = (
-                f"📰 <b>New Article Alert!</b>\n\n"
-                f"<b>Date:</b> {human_readable_date}\n" # Use formatted date
+                f"<b>{row_dict.get('title', 'N/A')}</b>\n\n"
+                f"<b>Date:</b> {human_readable_date}\n"
                 f"<b>Source:</b> {row_dict.get('source', 'N/A')}\n"
-                f"<b>Title:</b> {row_dict.get('title', 'N/A')}\n"
                 f"<b>Link:</b> {'<a href=\"' + row_dict.get('url') + '\">' + row_dict.get('url') + '</a>' if row_dict.get('url') else 'No URL'}"
             )
             
             if await send_telegram_message_async(bot_token, chat_id_to_notify, message_content):
-                rows_to_update_indices.append(i) # Mark for update only if send succeeded
+                rows_to_update_indices.append(i)
             else:
                 log.warning(f"Notification failed for row {i+2}. Will retry next run.")
+            await asyncio.sleep(1.2)  # <-- Add this line: 1.2 seconds delay between messages
     
     # 3. Rewrite CSV if rows were successfully processed and marked for update
     if rows_to_update_indices:

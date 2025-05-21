@@ -5,6 +5,7 @@ import requests
 import os
 from dateutil import parser as date_parser # Renamed for clarity
 from datetime import timezone # Import timezone
+import html  # Add this import
 
 # Configuration
 RSS_FEED_URL = 'https://www.web3au.media/feed'
@@ -13,10 +14,12 @@ SOURCE_IDENTIFIER_NAME = 'www.web3au.media' # Renamed for clarity
 CSV_COLUMN_HEADERS = ['date', 'source', 'url', 'title', 'done'] # Renamed for clarity
 
 def clean_html_tags(raw_html_text):
-  """Removes HTML tags from a string."""
+  """Removes HTML tags from a string and decodes HTML entities."""
   if raw_html_text is None: return ""
   clean_regex = re.compile('<.*?>')
   cleaned_text = re.sub(clean_regex, '', raw_html_text)
+  # Decode HTML entities
+  cleaned_text = html.unescape(cleaned_text)
   return cleaned_text.strip()
 
 def fetch_and_parse_rss_feed(feed_url_to_fetch):

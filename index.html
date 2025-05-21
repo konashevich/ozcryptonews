@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSV Data Table</title>
+    <link rel="apple-touch-icon" sizes="180x180" href="favicons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="favicons/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="favicons/favicon-16x16.png">
+<link rel="manifest" href="favicons/site.webmanifest">
+<link rel="shortcut icon" href="favicons/favicon.ico">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif; /* Modern font */
+            margin: 0;
+            background-color: #f8f9fa; /* Light gray background */
+            color: #343a40; /* Darker text for better contrast */
+            display: flex;
+            flex-direction: column;
+        }
+        .container {
+            width: 100%;
+            min-height: 100vh; /* Ensure container takes at least full viewport height */
+            background-color: #ffffff; /* White background for the table container */
+            padding: 25px;
+            border-radius: 0; 
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
+            box-sizing: border-box; /* Ensure padding is included in the 100% width */
+        }
+        h1 {
+            text-align: center;
+            color: #2c3e50; 
+            margin-bottom: 25px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            border: 1px solid #dee2e6; 
+            padding: 14px 16px; 
+            text-align: left;
+            vertical-align: middle; 
+        }
+        th {
+            background-color: #007bff; 
+            color: white;
+            cursor: pointer;
+            position: relative;
+            font-weight: 600; 
+            text-transform: capitalize; 
+        }
+        th::after, th::before {
+            content: '';
+            position: absolute;
+            right: 10px;
+            font-size: 0.8em;
+            opacity: 0.5;
+        }
+        th::before { 
+            content: '\25B2'; 
+            top: calc(50% - 0.7em);
+        }
+        th::after { 
+            content: '\25BC'; 
+            top: calc(50% + 0.1em);
+        }
+        th.sort-asc::before, th.sort-desc::after {
+            opacity: 1;
+            color: #ffffff; 
+        }
+        th.sort-asc::after, th.sort-desc::before {
+             opacity: 0.3; 
+        }
+
+        tr:nth-child(even) {
+            background-color: #f8f9fa; 
+        }
+        tr:hover {
+            background-color: #e9ecef; 
+        }
+        .filter-controls {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); 
+            gap: 15px;
+            margin-bottom: 25px;
+            padding: 15px;
+            background-color: #e9ecef; 
+            border-radius: 8px;
+            align-items: center; /* Align items in the grid cells vertically */
+        }
+        .filter-controls input[type="text"], 
+        .filter-controls input[type="date"],
+        .filter-controls select, /* Style for select if added */
+        .custom-dropdown-button { /* Style for custom dropdown button */
+            width: 100%; 
+            padding: 10px 12px;
+            border: 1px solid #ced4da; 
+            border-radius: 6px;
+            box-sizing: border-box; 
+            transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+            height: 40px; /* Consistent height */
+            background-color: #fff;
+            text-align: left;
+            cursor: pointer;
+            position: relative; /* For dropdown arrow */
+        }
+        .custom-dropdown-button::after { /* Dropdown arrow */
+            content: '\25BC';
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 0.8em;
+        }
+
+        .filter-controls input[type="text"]:focus,
+        .filter-controls input[type="date"]:focus,
+        .filter-controls select:focus,
+        .custom-dropdown-button:focus {
+            border-color: #80bdff; 
+            outline: 0;
+            box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25); 
+        }
+        .date-range-filter-container, .select-filter-container, .custom-dropdown-container { /* Updated checkbox to select */
+            display: flex;
+            align-items: center; 
+            gap: 8px; 
+            position: relative; /* For dropdown panel positioning */
+        }
+        .custom-dropdown-container {
+            flex-direction: column; /* Stack button and panel */
+            align-items: stretch; /* Make button and panel full width of cell */
+        }
+        .custom-dropdown-panel {
+            display: none; /* Hidden by default */
+            position: absolute;
+            top: 100%; /* Position below the button */
+            left: 0;
+            width: 100%;
+            background-color: white;
+            border: 1px solid #ced4da;
+            border-top: none; /* Avoid double border with button */
+            border-radius: 0 0 6px 6px; /* Rounded bottom corners */
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            z-index: 10; /* Ensure it's above other elements */
+            max-height: 200px; /* Scrollable if many options */
+            overflow-y: auto;
+            padding: 5px 0;
+        }
+        .custom-dropdown-panel.show {
+            display: block;
+        }
+        .custom-dropdown-panel div { /* Container for checkbox and label */
+            padding: 8px 12px;
+            display: flex;
+            align-items: center;
+        }
+        .custom-dropdown-panel div:hover {
+            background-color: #f1f1f1;
+        }
+        .custom-dropdown-panel input[type="checkbox"] {
+            margin-right: 8px;
+            width: auto;
+            height: auto;
+        }
+        .custom-dropdown-panel label {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            flex-grow: 1; /* Allow label to take space */
+            margin-bottom: 0;
+        }
+
+
+        .date-range-filter-container {
+            flex-direction: row; 
+            gap: 15px; 
+        }
+        .date-range-filter-container > div { 
+            display: flex;
+            align-items: center;
+            gap: 8px; 
+            flex-grow: 1; 
+        }
+        .date-range-filter-container label, .select-filter-container label { /* Updated checkbox to select */
+            white-space: nowrap; 
+            margin-bottom: 0; 
+        }
+      
+
+        a {
+            color: #0056b3; 
+            text-decoration: none;
+            font-weight: 500;
+        }
+        a:hover {
+            text-decoration: underline;
+            color: #003d80; 
+        }
+        .message-area {
+            text-align: center;
+            padding: 20px;
+            font-style: italic;
+            color: #6c757d; 
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 15px; 
+            }
+            th, td {
+                padding: 10px 8px; 
+            }
+            .filter-controls {
+                grid-template-columns: 1fr; 
+            }
+            .date-range-filter-container { 
+                flex-direction: column;
+                align-items: stretch; 
+            }
+            .date-range-filter-container > div {
+                 width: 100%; 
+            }
+            h1 {
+                font-size: 1.8em;
+            }
+        }
+    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+
+    <div class="container">
+        <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 10px; justify-content: space-between;">
+            <div style="display: flex; align-items: center; gap: 16px;">
+                <img src="logo.png" alt="Logo" style="height: 48px; width: 48px; object-fit: contain;">
+                <h1 style="margin: 0;">All WEB3 New of Australia - Aggregator</h1>
+            </div>
+            <a href="https://t.me/ozcrytponews" target="_blank" rel="noopener noreferrer" style="font-size: 1.1em; color: #007bff; text-decoration: none; font-weight: 500;">
+                Telegram channel: @ozcryptonews
+            </a>
+        </div>
+
+        <div class="filter-controls" id="filterControls">
+            </div>
+
+        <div style="overflow-x: auto;"> 
+            <table id="csvDataTable">
+                <thead>
+                    <tr id="tableHeaderRow">
+                        </tr>
+                </thead>
+                <tbody id="tableBodyContent">
+                    </tbody>
+            </table>
+        </div>
+        <div id="noResultsMessage" class="message-area" style="display: none;">No matching records found.</div>
+    </div>
+
+    <script>
+        // Configuration: Path to your CSV file
+        const csvFilePath = 'articles.csv'; 
+
+        // DOM element references
+        const tableBody = document.getElementById('tableBodyContent');
+        const headerRow = document.getElementById('tableHeaderRow');
+        const filterControlsContainer = document.getElementById('filterControls');
+        const noResultsMessage = document.getElementById('noResultsMessage');
+
+        // Data storage and state
+        let originalDataset = []; 
+        let currentSortConfig = { column: 'date', ascending: false }; // Default sort: date descending (newest first)
+        let columnHeaders = []; 
+        let displayHeaders = []; 
+
+
+        async function loadAndProcessData() {
+            try {
+                const response = await fetch(csvFilePath);
+                if (!response.ok) {
+                    throw new Error(`Network response was not ok: ${response.statusText}. Failed to fetch '${csvFilePath}'. Please ensure the file is in the same directory as the HTML file, and you are using a local web server if testing locally.`);
+                }
+                const csvText = await response.text();
+                originalDataset = parseCsvText(csvText);
+
+                if (originalDataset.length > 0) {
+                    // originalDataset.reverse(); // Removed: Default sort will be handled by currentSortConfig
+
+                    columnHeaders = Object.keys(originalDataset[0]);
+                    
+                    const hasUrl = columnHeaders.some(h => h.toLowerCase() === 'url');
+                    const hasTitle = columnHeaders.some(h => h.toLowerCase() === 'title');
+
+                    displayHeaders = [];
+                    let articleColumnAdded = false;
+                    columnHeaders.forEach(originalHeader => {
+                        const lcHeader = originalHeader.toLowerCase();
+                        if (lcHeader === 'url' || lcHeader === 'title') {
+                            if (hasUrl && hasTitle && !articleColumnAdded) {
+                                displayHeaders.push('Article');
+                                articleColumnAdded = true;
+                            } else if (!hasUrl && lcHeader === 'url') { // Only URL exists
+                                displayHeaders.push(originalHeader);
+                            } else if (!hasTitle && lcHeader === 'title') { // Only Title exists
+                                displayHeaders.push(originalHeader);
+                            }
+                        } else if (lcHeader === 'done') {
+                            displayHeaders.push('Sent'); // Rename "done" to "Sent" for display
+                        }
+                        else {
+                            displayHeaders.push(originalHeader);
+                        }
+                    });
+                    if (hasUrl && hasTitle && !articleColumnAdded) { // Safety check if somehow missed
+                         console.warn("Article column was not added despite url and title existing.");
+                    }
+                    
+                    createTableHeaders(); 
+                    createFilterInputs(); 
+                    updateHeaderSortIndicators(); // Update indicators for default sort
+                    applyFiltersAndSorting(); // Apply default sort and render
+                } else {
+                    tableBody.innerHTML = `<tr><td colspan="100%" class="message-area">No data found in the CSV file.</td></tr>`;
+                    console.warn("CSV file parsed, but it appears to be empty or contain no data rows.");
+                }
+            } catch (error) {
+                console.error('Error during data loading or processing:', error);
+                tableBody.innerHTML = `<tr><td colspan="${displayHeaders.length || 1}" class="message-area">Error: ${error.message}</td></tr>`;
+            }
+        }
+        
+        function parseCsvLine(lineText) {
+            const fields = [];
+            const csvRegex = /(?:"((?:[^"]|"")*)"|([^,]*))(?:,|$)/g;
+            let match;
+            while ((match = csvRegex.exec(lineText))) {
+                let fieldValue;
+                if (match[1] !== undefined) { 
+                    fieldValue = match[1].replace(/""/g, '"'); 
+                } else { 
+                    fieldValue = match[2];
+                }
+                fields.push(fieldValue.trim());
+                if (match.index + match[0].length === lineText.length) {
+                    if (match[0].endsWith(',')) {
+                         fields.push('');
+                    }
+                    break;
+                }
+            }
+            return fields;
+        }
+
+        function parseCsvText(text) {
+            const lines = text.trim().split(/\r?\n/);
+            if (lines.length < 2) {
+                console.warn("CSV text has less than 2 lines (header + data).");
+                return [];
+            }
+
+            const headerLine = lines.shift();
+            const rawHeaders = parseCsvLine(headerLine).map(h => h.trim());
+            const numColumns = rawHeaders.length;
+
+            if (numColumns === 0) {
+                console.warn("CSV headers could not be parsed or are empty.");
+                return [];
+            }
+
+            return lines.map(line => {
+                if (line.trim() === '') return null; 
+
+                const values = parseCsvLine(line);
+                const rowObject = {};
+
+                for (let i = 0; i < numColumns; i++) {
+                    rowObject[rawHeaders[i]] = (values[i] !== undefined) ? values[i] : '';
+                }
+                
+                if (values.length !== numColumns) {
+                    console.warn(`CSV line parsed with ${values.length} fields, but expected ${numColumns} based on headers. Line: "${line}"`);
+                    for (let i = values.length; i < numColumns; i++) {
+                        rowObject[rawHeaders[i]] = '';
+                    }
+                }
+                return rowObject;
+            }).filter(row => row !== null); 
+        }
+
+
+        function createTableHeaders() {
+            headerRow.innerHTML = ''; 
+            displayHeaders.forEach(headerText => { 
+                const th = document.createElement('th');
+                th.textContent = headerText;
+                let dataColumn = headerText;
+                if (headerText === 'Article') {
+                    dataColumn = 'title'; // Sort 'Article' by 'title'
+                } else if (headerText === 'Sent') {
+                    dataColumn = 'done'; // Sort 'Sent' by original 'done' data
+                }
+                th.dataset.column = dataColumn; 
+                th.addEventListener('click', () => handleSortRequest(dataColumn));
+                headerRow.appendChild(th);
+            });
+        }
+
+        function createFilterInputs() {
+            filterControlsContainer.innerHTML = ''; 
+            displayHeaders.forEach(headerText => { 
+                let dataColumn = headerText;
+                 if (headerText === 'Article') {
+                    dataColumn = 'title';
+                } else if (headerText === 'Sent') {
+                    dataColumn = 'done';
+                }
+                const placeholderText = (headerText === 'Article') ? `Filter by Article Title...` : `Filter by ${headerText}...`;
+
+                if (dataColumn.toLowerCase() === 'date') { 
+                    const dateRangeContainer = document.createElement('div');
+                    dateRangeContainer.className = 'date-range-filter-container';
+                    
+                    const fromGroup = document.createElement('div');
+                    const fromLabel = document.createElement('label');
+                    fromLabel.textContent = 'From:';
+                    fromLabel.htmlFor = 'dateFilterFrom'; 
+                    const dateInputFrom = document.createElement('input');
+                    dateInputFrom.type = 'date';
+                    dateInputFrom.id = 'dateFilterFrom'; 
+                    dateInputFrom.value = '2025-01-01'; 
+                    dateInputFrom.dataset.column = 'date'; 
+                    dateInputFrom.addEventListener('input', debounce(applyFiltersAndSorting, 300));
+                    fromGroup.appendChild(fromLabel);
+                    fromGroup.appendChild(dateInputFrom);
+
+                    const toGroup = document.createElement('div');
+                    const toLabel = document.createElement('label');
+                    toLabel.textContent = 'To:';
+                    toLabel.htmlFor = 'dateFilterTo'; 
+                    const dateInputTo = document.createElement('input');
+                    dateInputTo.type = 'date';
+                    dateInputTo.id = 'dateFilterTo'; 
+                    dateInputTo.dataset.column = 'date'; 
+                    dateInputTo.addEventListener('input', debounce(applyFiltersAndSorting, 300));
+                    toGroup.appendChild(toLabel);
+                    toGroup.appendChild(dateInputTo);
+
+                    dateRangeContainer.appendChild(fromGroup);
+                    dateRangeContainer.appendChild(toGroup);
+                    filterControlsContainer.appendChild(dateRangeContainer);
+                } else if (dataColumn.toLowerCase() === 'done') { // Corresponds to "Sent" display header
+                    const selectContainer = document.createElement('div');
+                    selectContainer.className = 'select-filter-container';
+                    
+                    const select = document.createElement('select');
+                    select.id = 'sentFilterSelect';
+                    select.dataset.column = 'done'; // Filter based on 'done' data
+                    select.addEventListener('change', applyFiltersAndSorting);
+
+                    const optionAll = document.createElement('option');
+                    optionAll.value = 'all';
+                    optionAll.textContent = 'Sent Status: All';
+                    optionAll.selected = true;
+                    select.appendChild(optionAll);
+
+                    const optionSent = document.createElement('option');
+                    optionSent.value = 'sent';
+                    optionSent.textContent = 'Sent (+)';
+                    select.appendChild(optionSent);
+
+                    const optionUnsent = document.createElement('option');
+                    optionUnsent.value = 'unsent';
+                    optionUnsent.textContent = 'Unsent';
+                    select.appendChild(optionUnsent);
+                    
+                    selectContainer.appendChild(select); // No separate label, using select itself
+                    filterControlsContainer.appendChild(selectContainer);
+
+                } else if (dataColumn.toLowerCase() === 'source') {
+                    const dropdownContainer = document.createElement('div');
+                    dropdownContainer.className = 'custom-dropdown-container';
+
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'custom-dropdown-button';
+                    button.textContent = 'Filter by Source'; 
+                    button.id = 'sourceFilterButton';
+                    
+                    const panel = document.createElement('div');
+                    panel.className = 'custom-dropdown-panel';
+                    panel.id = 'sourceFilterPanel';
+
+                    const uniqueSources = [...new Set(originalDataset.map(item => item['source']).filter(Boolean))].sort();
+                    uniqueSources.forEach(sourceValue => {
+                        const itemDiv = document.createElement('div');
+                        const checkbox = document.createElement('input');
+                        checkbox.type = 'checkbox';
+                        checkbox.value = sourceValue;
+                        checkbox.id = `source-checkbox-${sourceValue.replace(/\W/g, '_')}`; 
+                        checkbox.dataset.column = 'source';
+                        checkbox.addEventListener('change', applyFiltersAndSorting);
+                        
+                        const label = document.createElement('label');
+                        label.htmlFor = checkbox.id;
+                        label.textContent = sourceValue;
+                        
+                        itemDiv.appendChild(checkbox);
+                        itemDiv.appendChild(label);
+                        panel.appendChild(itemDiv);
+                    });
+
+                    button.addEventListener('click', (event) => {
+                        event.stopPropagation(); 
+                        panel.classList.toggle('show');
+                    });
+
+                    dropdownContainer.appendChild(button);
+                    dropdownContainer.appendChild(panel);
+                    filterControlsContainer.appendChild(dropdownContainer);
+
+                } else {
+                    const input = document.createElement('input');
+                    input.type = 'text';
+                    input.placeholder = placeholderText;
+                    input.dataset.column = dataColumn; 
+                    input.addEventListener('input', debounce(applyFiltersAndSorting, 300));
+                    filterControlsContainer.appendChild(input);
+                }
+            });
+        }
+        
+        document.addEventListener('click', function(event) {
+            const sourcePanel = document.getElementById('sourceFilterPanel');
+            const sourceButton = document.getElementById('sourceFilterButton');
+            if (sourcePanel && sourceButton && !sourceButton.contains(event.target) && !sourcePanel.contains(event.target)) {
+                sourcePanel.classList.remove('show');
+            }
+        });
+
+
+        function formatDate(dateInput) {
+            try {
+                const dateObj = new Date(dateInput);
+                if (isNaN(dateObj.getTime())) { 
+                    return String(dateInput); 
+                }
+                const day = String(dateObj.getDate()).padStart(2, '0');
+                const month = String(dateObj.getMonth() + 1).padStart(2, '0'); 
+                const year = dateObj.getFullYear();
+                return `${day}/${month}/${year}`;
+            } catch (e) {
+                console.warn(`Could not format date: ${dateInput}`, e);
+                return String(dateInput); 
+            }
+        }
+
+        function renderTableRows(dataToRender) {
+            tableBody.innerHTML = ''; 
+            noResultsMessage.style.display = dataToRender.length === 0 && displayHeaders.length > 0 ? 'block' : 'none';
+
+            if (dataToRender.length === 0 && displayHeaders.length > 0) {
+                const tr = tableBody.insertRow();
+                const td = tr.insertCell();
+                td.colSpan = displayHeaders.length; 
+                td.className = 'message-area';
+                td.textContent = 'No matching records found.';
+                return;
+            }
+            if (displayHeaders.length === 0 && dataToRender.length > 0){
+                 console.warn("Attempting to render rows but no display headers are defined. Check CSV parsing and header generation.");
+                 const tr = tableBody.insertRow();
+                 const td = tr.insertCell();
+                 td.className = 'message-area';
+                 td.textContent = 'Could not determine table structure from CSV.';
+                 return;
+            }
+            if (dataToRender.length === 0) return;
+
+            dataToRender.forEach(row => {
+                const tr = document.createElement('tr');
+                displayHeaders.forEach(headerText => { 
+                    const td = document.createElement('td');
+                    if (headerText === 'Article') {
+                        const urlValue = row['url'] || ''; 
+                        const titleValue = row['title'] || 'View Article'; 
+
+                        if (urlValue) {
+                            try {
+                                const urlObject = new URL(urlValue.startsWith('http://') || urlValue.startsWith('https://') ? urlValue : `http://${urlValue}`);
+                                const a = document.createElement('a');
+                                a.href = urlObject.href;
+                                a.textContent = titleValue; 
+                                a.target = '_blank';
+                                a.rel = 'noopener noreferrer';
+                                td.appendChild(a);
+                            } catch (e) {
+                                td.textContent = `${titleValue} (Invalid URL)`;
+                                console.warn(`Invalid URL for article "${titleValue}": ${urlValue}`);
+                            }
+                        } else {
+                            td.textContent = titleValue; 
+                        }
+                    } else if (headerText === 'Sent') { // Display data from 'done' field for 'Sent' column
+                        td.textContent = row['done'] !== undefined ? row['done'] : '';
+                    }
+                    else { 
+                        let cellValue = row[headerText] !== undefined ? row[headerText] : '';
+                        if (headerText.toLowerCase() === 'date' && cellValue) {
+                            td.textContent = formatDate(cellValue);
+                        } else {
+                            td.textContent = cellValue;
+                        }
+                    }
+                    tr.appendChild(td);
+                });
+                tableBody.appendChild(tr);
+            });
+        }
+
+        function handleSortRequest(columnKey) { 
+            if (currentSortConfig.column === columnKey) {
+                currentSortConfig.ascending = !currentSortConfig.ascending; 
+            } else {
+                currentSortConfig.column = columnKey;
+                currentSortConfig.ascending = true; 
+            }
+            updateHeaderSortIndicators();
+            applyFiltersAndSorting(); 
+        }
+
+        function updateHeaderSortIndicators() {
+            headerRow.querySelectorAll('th').forEach(th => {
+                th.classList.remove('sort-asc', 'sort-desc');
+                if (th.dataset.column === currentSortConfig.column) { 
+                    th.classList.add(currentSortConfig.ascending ? 'sort-asc' : 'sort-desc');
+                }
+            });
+        }
+
+        function applyFiltersAndSorting() {
+            let dataView = [...originalDataset];
+
+            // Date Range Filter
+            const dateFromInput = document.getElementById('dateFilterFrom');
+            const dateToInput = document.getElementById('dateFilterTo');
+            const dateFromValue = dateFromInput ? dateFromInput.value : null;
+            const dateToValue = dateToInput ? dateToInput.value : null;
+            
+            let filterFromDate = null;
+            if (dateFromValue) {
+                const parts = dateFromValue.split('-'); 
+                filterFromDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]), 0, 0, 0, 0);
+            }
+            let filterToDate = null;
+            if (dateToValue) {
+                const parts = dateToValue.split('-');
+                filterToDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]), 23, 59, 59, 999);
+            }
+
+            if (filterFromDate || filterToDate) {
+                dataView = dataView.filter(row => {
+                    const rowDateValue = row['date']; 
+                    if (!rowDateValue) return false; 
+                    const rowDateObj = new Date(rowDateValue); 
+                    if (isNaN(rowDateObj.getTime())) return false; 
+
+                    if (filterFromDate && rowDateObj < filterFromDate) return false;
+                    if (filterToDate && rowDateObj > filterToDate) return false;
+                    return true;
+                });
+            }
+
+            // "Sent" Dropdown Filter (replaces "Done" Checkbox)
+            const sentFilter = document.getElementById('sentFilterSelect');
+            if (sentFilter) {
+                const selectedSentStatus = sentFilter.value;
+                if (selectedSentStatus === 'sent') {
+                    dataView = dataView.filter(row => (row['done'] || '').trim() === '+');
+                } else if (selectedSentStatus === 'unsent') {
+                    dataView = dataView.filter(row => (row['done'] || '').trim() === '');
+                }
+                // If 'all', no filtering is applied for this criteria
+            }
+
+
+            // "Source" Multi-select Checkbox Filter
+            const sourcePanel = document.getElementById('sourceFilterPanel');
+            if (sourcePanel) {
+                const selectedSources = [];
+                sourcePanel.querySelectorAll('input[type="checkbox"]:checked').forEach(checkbox => {
+                    selectedSources.push(checkbox.value);
+                });
+                if (selectedSources.length > 0) {
+                    dataView = dataView.filter(row => selectedSources.includes(row['source']));
+                }
+            }
+
+
+            // Text Filters (for other columns, including 'Article' which filters by 'title')
+            const activeTextFilters = {};
+            filterControlsContainer.querySelectorAll('input[type="text"]').forEach(input => {
+                if (input.value.trim() !== '') {
+                    activeTextFilters[input.dataset.column] = input.value.trim().toLowerCase();
+                }
+            });
+
+            if (Object.keys(activeTextFilters).length > 0) {
+                dataView = dataView.filter(row => {
+                    return Object.entries(activeTextFilters).every(([dataFieldKey, filterValue]) => {
+                        const cellValue = String(row[dataFieldKey] || '').toLowerCase();
+                        return cellValue.includes(filterValue);
+                    });
+                });
+            }
+
+            // Apply sorting
+            if (currentSortConfig.column) {
+                const sortColumnKey = currentSortConfig.column; 
+                
+                dataView.sort((a, b) => {
+                    let valA = a[sortColumnKey] || '';
+                    let valB = b[sortColumnKey] || '';
+
+                    if (sortColumnKey.toLowerCase() === 'date' || sortColumnKey.toLowerCase() === 'done') { // 'done' for 'Sent' column
+                        // For 'done' column, treat '+' as greater than empty for sorting
+                        if (sortColumnKey.toLowerCase() === 'done') {
+                            valA = (valA.trim() === '+') ? 1 : 0;
+                            valB = (valB.trim() === '+') ? 1 : 0;
+                        } else { // Date column
+                            valA = new Date(valA); 
+                            valB = new Date(valB); 
+                            if (isNaN(valA.getTime())) valA = new Date(0); 
+                            if (isNaN(valB.getTime())) valB = new Date(0);
+                        }
+                    } else { 
+                        const numA = parseFloat(valA);
+                        const numB = parseFloat(valB);
+                        if (!isNaN(numA) && !isNaN(numB) && String(valA).trim() !== '' && String(valB).trim() !== '') {
+                            valA = numA;
+                            valB = numB;
+                        } else {
+                            valA = String(valA).toLowerCase();
+                            valB = String(valB).toLowerCase();
+                        }
+                    }
+
+                    if (valA < valB) return currentSortConfig.ascending ? -1 : 1;
+                    if (valA > valB) return currentSortConfig.ascending ? 1 : -1;
+                    return 0;
+                });
+            }
+            renderTableRows(dataView);
+        }
+
+        function debounce(func, delay) {
+            let timeoutId;
+            return function(...args) {
+                clearTimeout(timeoutId);
+                timeoutId = setTimeout(() => {
+                    func.apply(this, args);
+                }, delay);
+            };
+        }
+
+        loadAndProcessData();
+    </script>
+
+</body>
+</html>
