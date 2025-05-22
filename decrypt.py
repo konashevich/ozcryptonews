@@ -16,7 +16,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from datetime import timezone # Import timezone
+from datetime import datetime, timezone
 
 # Configuration
 CSV_FILE = 'articles.csv'
@@ -148,7 +148,8 @@ def parse_search_page_articles(html_content):
         
         try:
             # date_parser.parse is good at handling various formats
-            parsed_dt_obj = date_parser.parse(date_str_to_parse)
+            # FIX: Add default=datetime.now(timezone.utc) for relative date parsing
+            parsed_dt_obj = date_parser.parse(date_str_to_parse, default=datetime.now(timezone.utc))
             # Ensure the datetime object is UTC
             if parsed_dt_obj.tzinfo is None: # If naive
                 dt_utc = parsed_dt_obj.replace(tzinfo=timezone.utc) # Assume UTC

@@ -1,6 +1,5 @@
 beautifulsoup4
 feedparser
-lxml
 newspaper3k
 pandas
 python-dateutil
@@ -8,3 +7,4 @@ python-telegram-bot
 requests
 selenium
 webdriver-manager
+"lxml[html_clean]"

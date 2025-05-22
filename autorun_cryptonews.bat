@@ -1,21 +1,21 @@
-@echo off
+REM @echo off
 cd /d "%~dp0"
-call ".venv\Scripts\activate.bat"
 
-REM Redirect output to log file
-python asic.py >> log.txt 2>&1
-python ausblock.py >> log.txt 2>&1
-python austrac.py >> log.txt 2>&1
-python australiandefiassociation.py >> log.txt 2>&1
-python australianfintech.py >> log.txt 2>&1
-python coindesk.py >> log.txt 2>&1
-python cointelegraph.py >> log.txt 2>&1
-python cryptonews.py >> log.txt 2>&1
-python decrypt.py >> log.txt 2>&1
-python regtechglobal.py >> log.txt 2>&1
-python dfcrc.py >> log.txt 2>&1
-python web3au.py >> log.txt 2>&1
-python telegrambotsender.py >> log.txt 2>&1
-python commit_and_push_articles.py >> log.txt 2>&1
+REM Activate the virtual environment
+call "venv\Scripts\activate.bat"
 
-pause
+REM Run Python scripts
+python asic.py
+python ausblock.py
+python austrac.py
+python australiandefiassociation.py
+python australianfintech.py
+python coindesk.py
+python cointelegraph.py
+python cryptonews.py
+python decrypt.py
+python regtechglobal.py
+python dfcrc.py
+python web3au.py
+python telegrambotsender.py
+git_commit_push.py

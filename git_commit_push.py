@@ -10,12 +10,14 @@ def run_command(command):
         print(result.stdout)
 
 def main():
+    print("Starting git_commit_push.py")
     # Add articles.csv to the staging area
     run_command(["git", "add", "articles.csv"])
     # Commit the changes with a message
     run_command(["git", "commit", "-m", "Update articles.csv"])
     # Push the commit to the repository's main branch
     run_command(["git", "push", "https://github.com/konashevich/ozcryptonews.git", "HEAD:main"])
+    print("Finished git_commit_push.py")
 
 if __name__ == "__main__":
     main()

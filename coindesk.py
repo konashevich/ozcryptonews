@@ -214,7 +214,8 @@ def extract_articles(page_source, effective_selector, fallback_selector, base_ur
 
                 try:
                     # Parse date string. date_parser.parse is good at handling various formats.
-                    parsed_dt_obj = date_parser.parse(date_str)
+                    # FIX: Add default=datetime.now(timezone.utc) for relative date parsing
+                    parsed_dt_obj = date_parser.parse(date_str, default=datetime.now(timezone.utc))
                     # Convert to UTC
                     if parsed_dt_obj.tzinfo is None: # If naive
                         dt_utc = parsed_dt_obj.replace(tzinfo=timezone.utc) # Assume UTC

@@ -272,7 +272,8 @@ def extract_articles(page_source, effective_container_selector, fallback_contain
 
                 try:
                     # dateutil.parser.parse is robust for various formats like "May 19, 2025" or ISO
-                    parsed_dt_obj = date_parser.parse(date_str)
+                    # FIX: Add default=datetime.now(timezone.utc) for relative date parsing
+                    parsed_dt_obj = date_parser.parse(date_str, default=datetime.now(timezone.utc))
                     # Convert to UTC if naive, or ensure it's UTC
                     if parsed_dt_obj.tzinfo is None or parsed_dt_obj.tzinfo.utcoffset(parsed_dt_obj) is None:
                         dt_utc = parsed_dt_obj.replace(tzinfo=timezone.utc) 
@@ -467,4 +468,3 @@ if __name__ == "__main__":
             print(f"Browser closed for {SOURCE_NAME}.")
     end_time = time.time()
     print(f"--- CoinTelegraph Scraper Finished ({SOURCE_NAME}) in {end_time - start_time:.2f} seconds ---")
-
