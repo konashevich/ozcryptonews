@@ -10,7 +10,7 @@ import html  # Add this import
 # Configuration
 RSS_FEED_URL = 'https://www.web3au.media/feed'
 CSV_OUTPUT_FILE = "articles.csv" # Renamed for clarity
-SOURCE_IDENTIFIER_NAME = 'www.web3au.media' # Renamed for clarity
+SOURCE_IDENTIFIER_NAME = 'WEB3AU.Media'  # Changed for WEB3AU.Media
 CSV_COLUMN_HEADERS = ['date', 'source', 'url', 'title', 'done'] # Renamed for clarity
 
 def clean_html_tags(raw_html_text):
