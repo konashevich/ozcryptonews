@@ -9,7 +9,6 @@ python asic.py
 python ausblock.py
 python austrac.py
 python australiandefiassociation.py
-python australianfintech.py
 python coindesk.py
 python cointelegraph.py
 python cryptonews.py
