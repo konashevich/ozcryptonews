@@ -3,6 +3,9 @@ cd /d "%~dp0"
 REM Activate the virtual environment by its path
 call ".\.venv\Scripts\activate.bat"
 
+REM Log start time so hidden runs can be audited
+echo [%date% %time%] autorun started >> "%~dp0\autorun_run.log"
+
 REM Run Python scripts
 python asic.py
 python ausblock.py
